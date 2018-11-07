@@ -57,6 +57,8 @@
 #include <kernel/interrupts.h>
 
 #define __USE_TFT_SCROLL__
+#define __USE_TFT_VDG__
+#define __USE_UART_MON__
 
 unsigned int vcorwb;
 unsigned int vcorwf;
