@@ -1,5 +1,5 @@
 # MMSJOSRpi
-OS MMSJOS to Raspberry pi Zero W
+OS MMSJOS para Raspberry pi Zero W
 Para utilizar com LCD Grafico Colorido com Touch. A principio SSD1289.
 
 Projeto em Andamento.
