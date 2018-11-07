@@ -106,6 +106,7 @@ int Read_XY(unsigned char XY)
 void TP_GetAdXY(int *x,int *y)
 {
     int adx,ady;
+    double adxf, adyf;
 
     adx = Read_XY(CHX);
 
@@ -115,14 +116,16 @@ void TP_GetAdXY(int *x,int *y)
 
 	if (adx > 0) 
     {
-        *x = ((adx - 25) /*/ 1.90f*/ );    // Era 1.958f
+        adxf = (double)adx;
+        *x = (int)((adxf - 25) / 2.603f );    // Era 1.958f
     }
 	else
 		*x = adx;
 
 	if (ady > 0)
     {
-	    *y = ((ady - 55) /*/ 1.37f*/ );    // Era 1.375f  
+        adyf = (double)ady;
+	    *y = (int)((adyf - 55) / 1.375f );    // Era 1.375f  
     }
 	else
 		*y = ady;
@@ -162,9 +165,9 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
     {
         count = 10;
 
-        temp[0]=(buffer[0][0]+buffer[0][1]+buffer[0][2])/3;
-        temp[1]=(buffer[0][3]+buffer[0][4]+buffer[0][5])/3;
-        temp[2]=(buffer[0][6]+buffer[0][7]+buffer[0][8])/3;
+        temp[0]=(int)((double)(buffer[0][0]+buffer[0][1]+buffer[0][2]) / 3);
+        temp[1]=(int)((double)(buffer[0][3]+buffer[0][4]+buffer[0][5]) / 3);
+        temp[2]=(int)((double)(buffer[0][6]+buffer[0][7]+buffer[0][8]) / 3);
         m0=temp[0]-temp[1];
         m1=temp[1]-temp[2];
         m2=temp[2]-temp[0];
@@ -177,18 +180,18 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
         if(m0<m1)
         {
             if(m2<m0)
-                screenPtr->x=(temp[0]+temp[2])/2;
+                screenPtr->x=(int)((double)(temp[0]+temp[2]) / 2);
             else
-                screenPtr->x=(temp[0]+temp[1])/2;
+                screenPtr->x=(int)((double)(temp[0]+temp[1]) / 2);
         }
         else if(m2<m1)
-	            screenPtr->x=(temp[0]+temp[2])/2;
+	            screenPtr->x=(int)((double)(temp[0]+temp[2]) / 2);
     	     else
-        	    screenPtr->x=(temp[1]+temp[2])/2;
+        	    screenPtr->x=(int)((double)(temp[1]+temp[2]) / 2);
 
-        temp[0]=(buffer[1][0]+buffer[1][1]+buffer[1][2])/3;
-        temp[1]=(buffer[1][3]+buffer[1][4]+buffer[1][5])/3;
-        temp[2]=(buffer[1][6]+buffer[1][7]+buffer[1][8])/3;
+        temp[0]=(int)((double)(buffer[1][0]+buffer[1][1]+buffer[1][2]) / 3);
+        temp[1]=(int)((double)(buffer[1][3]+buffer[1][4]+buffer[1][5]) / 3);
+        temp[2]=(int)((double)(buffer[1][6]+buffer[1][7]+buffer[1][8]) / 3);
         m0=temp[0]-temp[1];
         m1=temp[1]-temp[2];
         m2=temp[2]-temp[0];
@@ -201,14 +204,14 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
         if(m0<m1)
         {
             if(m2<m0)
-                screenPtr->y=(temp[0]+temp[2])/2;
+                screenPtr->y=(int)((double)(temp[0]+temp[2]) / 2);
             else
-                screenPtr->y=(temp[0]+temp[1])/2;
+                screenPtr->y=(int)((double)(temp[0]+temp[1]) / 2);
         }
         else if(m2<m1)
-	            screenPtr->y=(temp[0]+temp[2])/2;
+	            screenPtr->y=(int)((double)(temp[0]+temp[2]) / 2);
 	         else
-    	        screenPtr->y=(temp[1]+temp[2])/2;
+    	        screenPtr->y=(int)((double)(temp[1]+temp[2]) / 2);
 
         return 1;
     }

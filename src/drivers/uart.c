@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-#include <kernel/uart.h>
+#include <drivers/uart.h>
 #include <common/stdlib.h>
 
 // Memory-Mapped I/O output

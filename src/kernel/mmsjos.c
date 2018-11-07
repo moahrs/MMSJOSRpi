@@ -43,7 +43,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <kernel/uart.h>
+#include <drivers/uart.h>
 #include <kernel/mem.h>
 #include <kernel/atag.h>
 #include <kernel/mmsjos.h>
