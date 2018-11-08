@@ -41,6 +41,10 @@
 * 57 = Hourglass
 ********************************************************************************/
 
+#define __USE_TFT_SCROLL__
+#define __USE_TFT_VDG__
+//#define __USE_UART_MON__
+
 #include <stddef.h>
 #include <stdint.h>
 #include <drivers/uart.h>
@@ -51,14 +55,12 @@
 #include <common/stdio.h>
 #include <common/stdlib.h>
 #include <drivers/bcm2835min.h>
-#include <drivers/lcd_tch.h>
-#include <drivers/lcd_vdg_api.h>
+#ifdef __USE_TFT_VDG__
+    #include <drivers/lcd_tch.h>
+    #include <drivers/lcd_vdg_api.h>
+#endif
 #include <drivers/spi_manual.h> 
 #include <kernel/interrupts.h>
-
-#define __USE_TFT_SCROLL__
-#define __USE_TFT_VDG__
-#define __USE_UART_MON__
 
 unsigned int vcorwb;
 unsigned int vcorwf;
@@ -102,9 +104,15 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     spi_man_init();
 
-    TFT_Init();
+    #ifdef __USE_TFT_VDG__
+        TFT_Init();
 
-    Touch_Init();
+        Touch_Init();
+    #endif
+
+    #ifdef __USE_UART_MON__
+        uart_init();
+    #endif
 
     unsigned int vbytepic = 0, vbytevdg;
     unsigned int ix = 0, vvcol = 0;
@@ -127,33 +135,35 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vtotmem = 512;
 
     // Recuperar informacoes do Video
-    paramVDG[0] = 0x01;
-    paramVDG[1] = 0xEF;
-    commVDG(paramVDG);
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] = 0x01;
+        paramVDG[1] = 0xEF;
+        commVDG(paramVDG);
 
-    vbytevdg = paramVDG[0];
-    vxgmax = paramVDG[1] << 8;
-    vxgmax = vxgmax | paramVDG[2];
-    vygmax = paramVDG[3] << 8;
-    vygmax = vygmax | paramVDG[4];
+        vbytevdg = paramVDG[0];
+        vxgmax = paramVDG[1] << 8;
+        vxgmax = vxgmax | paramVDG[2];
+        vygmax = paramVDG[3] << 8;
+        vygmax = vygmax | paramVDG[4];
 
-    if (vxgmax != 319 || vygmax != 239) {
-        vxgmax = 319;
-        vygmax = 239;
-    }
+        if (vxgmax != 319 || vygmax != 239) {
+            vxgmax = 319;
+            vygmax = 239;
+        }
 
-    vxmax = ((vxgmax + 1) / 8) - 1;
-    vymax = ((vygmax + 1) / 10) - 1;
-    vlin = 0;
-    vcol = 0;
-    inten = 0;
-    vcorf = White;
-    vcorb = Black;
+        vxmax = ((vxgmax + 1) / 8) - 1;
+        vymax = ((vygmax + 1) / 10) - 1;
+        vlin = 0;
+        vcol = 0;
+        inten = 0;
+        vcorf = White;
+        vcorb = Black;
 
-    locate(0,0, NOREPOS_CURSOR);
-    writec(0x08, vcorf, vcorb, NOADD_POS_SCR);
-    ativaCursor();
-    clearScr(vcorb);
+        locate(0,0, NOREPOS_CURSOR);
+        writec(0x08, vcorf, vcorb, NOADD_POS_SCR);
+        ativaCursor();
+        clearScr(vcorb);
+    #endif
 
     writes("Running MMSJ-OS version 0.1\n\0", vcorf, vcorb);
     writes(" Raspberry PI Zero W v1.1 at 1Ghz.\n\0", vcorf, vcorb);
@@ -164,29 +174,31 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     writes(sqtdtam, vcorf, vcorb);
     writes("MB\n\0", vcorf, vcorb);
 
-    writes("VDG Configurations...\n\0", vcorf, vcorb);
-    writes(" Graphic \0", vcorf, vcorb);
-    vbytepic = vxgmax + 1;
-    itoa(vbytepic, sqtdtam, 10);
-    writes(sqtdtam, vcorf, vcorb);
-    writes("x\0", vcorf, vcorb);
-    vbytepic = vygmax + 1;
-    itoa(vbytepic, sqtdtam, 10);
-    writes(sqtdtam, vcorf, vcorb);
-    writes(", Text \0", vcorf, vcorb);
-    vbytepic = vxmax + 1;
-    itoa(vbytepic, sqtdtam, 10);
-    writes(sqtdtam, vcorf, vcorb);
-    writes("x\0", vcorf, vcorb);
-    vbytepic = vymax + 1;
-    itoa(vbytepic, sqtdtam, 10);
-    writes(sqtdtam, vcorf, vcorb);
-    writes("...\n\0", vcorf, vcorb);
+    #ifdef __USE_TFT_VDG__
+        writes("VDG Configurations...\n\0", vcorf, vcorb);
+        writes(" Graphic \0", vcorf, vcorb);
+        vbytepic = vxgmax + 1;
+        itoa(vbytepic, sqtdtam, 10);
+        writes(sqtdtam, vcorf, vcorb);
+        writes("x\0", vcorf, vcorb);
+        vbytepic = vygmax + 1;
+        itoa(vbytepic, sqtdtam, 10);
+        writes(sqtdtam, vcorf, vcorb);
+        writes(", Text \0", vcorf, vcorb);
+        vbytepic = vxmax + 1;
+        itoa(vbytepic, sqtdtam, 10);
+        writes(sqtdtam, vcorf, vcorb);
+        writes("x\0", vcorf, vcorb);
+        vbytepic = vymax + 1;
+        itoa(vbytepic, sqtdtam, 10);
+        writes(sqtdtam, vcorf, vcorb);
+        writes("...\n\0", vcorf, vcorb);
 
-    if ((vbytevdg & 0x0002) == 0x02)
-        writes(" Touch Module... Found.\n\n\0", vcorf, vcorb);
-    else
-        writes(" Touch Module... NOT Found.\n\n\0", Red, White);
+        if ((vbytevdg & 0x0002) == 0x02)
+            writes(" Touch Module... Found.\n\n\0", vcorf, vcorb);
+        else
+            writes(" Touch Module... NOT Found.\n\n\0", Red, White);
+    #endif
 
     // Inicio SO
     *vdiratup++ = '/';
@@ -194,71 +206,85 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     putPrompt(noaddline);
 
-    ativaCursor();
+    #ifdef __USE_TFT_VDG__
+        ativaCursor();
 
-    // Ativa Teclado Touch
-    funcKey(0,1, 1, 0, 50, 0);
+        // Ativa Teclado Touch
+        funcKey(0,1, 1, 0, 50, 0);
+    #endif
 
     // Loop principal
     while (1) {
-        blinkCursor();
+        #ifdef __USE_TFT_VDG__
+            blinkCursor();
 
-        // Verificar Teclado (PS/2 (ou Touch quando usando interrucao))
-        getKey();
+            // Verificar Teclado Touch
+            getKey();
 
-        vbytepic = paramVDG[0];
+            vbytepic = paramVDG[0];
 
-        // Verifica Retorno
-        if (vbytepic != 0) {
-            if (vbytepic >= 0x20 && vbytepic <= 0x7F) {
-                *vbufptr = vbytepic;
-                vbufptr++;
+            // Verifica Retorno
+            if (vbytepic != 0) {
+                if (vbytepic >= 0x20 && vbytepic <= 0x7F) {
+                    *vbufptr = vbytepic;
+                    vbufptr++;
 
-                if (vbufptr > vbuf + 31)
-                    vbufptr = vbuf + 31;
+                    if (vbufptr > vbuf + 31)
+                        vbufptr = vbuf + 31;
 
-                if (vcol > vxmax) {
-                    vlin = vlin + 1;
-                    locate(0, vlin, NOREPOS_CURSOR);
-                }
-
-                writec(vbytepic, vcorf, vcorb, ADD_POS_SCR);
-            }
-            else {
-                switch (vbytepic) {
-                    case 0x0D:  // Enter
+                    if (vcol > vxmax) {
                         vlin = vlin + 1;
                         locate(0, vlin, NOREPOS_CURSOR);
-                        vbufptr = 0x00;
-                        funcKey(0,2, 0, 0, 50, 0);
-                        processCmd();
-                        putPrompt(noaddline);
-                        vbufptr = vbuf;
-                        *vbufptr = 0x00;
-                        funcKey(0,1, 1, 0, 50, 0);
-                        break;
-                    case 0x08:  // BackSpace
-                        if (vcol > vinip) {
-                            *vbufptr = '\0';
-                            vbufptr--;
-                            if (vbufptr < vbuf)
-                                vbufptr = vbuf;
-                            *vbufptr = '\0';
-                            vcol = vcol - 1;
-                            locate(vcol,vlin, NOREPOS_CURSOR);
-                            writec(0x08, vcorf, vcorb, ADD_POS_SCR);
-                            vcol = vcol - 1;
-                            locate(vcol,vlin, NOREPOS_CURSOR);
-                        }
+                    }
 
-                        break;
-                    case 0x09:  // TAB
-                        // Procurar proximo nome de arquivo comecando pelo que
-                        // foi digitado ate o momento no buffer
-                        break;
+                    writec(vbytepic, vcorf, vcorb, ADD_POS_SCR);
+                }
+                else {
+                    switch (vbytepic) {
+                        case 0x0D:  // Enter
+                            vlin = vlin + 1;
+                            locate(0, vlin, NOREPOS_CURSOR);
+                            vbufptr = 0x00;
+                            funcKey(0,2, 0, 0, 50, 0);
+                            processCmd();
+                            putPrompt(noaddline);
+                            vbufptr = vbuf;
+                            *vbufptr = 0x00;
+                            funcKey(0,1, 1, 0, 50, 0);
+                            break;
+                        case 0x08:  // BackSpace
+                            if (vcol > vinip) {
+                                *vbufptr = '\0';
+                                vbufptr--;
+                                if (vbufptr < vbuf)
+                                    vbufptr = vbuf;
+                                *vbufptr = '\0';
+                                vcol = vcol - 1;
+                                locate(vcol,vlin, NOREPOS_CURSOR);
+                                writec(0x08, vcorf, vcorb, ADD_POS_SCR);
+                                vcol = vcol - 1;
+                                locate(vcol,vlin, NOREPOS_CURSOR);
+                            }
+
+                            break;
+                        case 0x09:  // TAB
+                            // Procurar proximo nome de arquivo comecando pelo que
+                            // foi digitado ate o momento no buffer
+                            break;
+                    }
                 }
             }
-        }
+        #endif
+
+        #ifdef __USE_UART_MON__
+            putPrompt(noaddline);
+
+            gets(vbuf,256);
+            puts(vbuf);
+            putc('\n');
+
+            processCmd();
+        #endif
     }
 }
 
@@ -273,35 +299,37 @@ void funcKey(unsigned char vambiente, unsigned char vshow, unsigned char venter,
     unsigned int vkeyx, vkeyy;
 
     // Calcula posicao do teclado
-    if (!vambiente) {
-        vkeyx = x;
+    #ifdef __USE_TFT_VDG__
+        if (!vambiente) {
+            vkeyx = x;
 
-        if (vlin < (vymax - 10))
-            vkeyy = (vlin + 1)  * 10;
-        else
-            vkeyy = (vlin - 11) * 10;
-    }
-    else {
-        vkeyx = x;
+            if (vlin < (vymax - 10))
+                vkeyy = (vlin + 1)  * 10;
+            else
+                vkeyy = (vlin - 11) * 10;
+        }
+        else {
+            vkeyx = x;
 
-        if (y < (vygmax - 100))
-            vkeyy = y + 1;
-        else
-            vkeyy = y - 100;
-    }
+            if (y < (vygmax - 100))
+                vkeyy = y + 1;
+            else
+                vkeyy = y - 100;
+        }
 
-    paramVDG[0] = 9;
-    paramVDG[1] = 0xDB;
-    paramVDG[2] = vkeyx >> 8;
-    paramVDG[3] = vkeyx;
-    paramVDG[4] = vkeyy >> 8;
-    paramVDG[5] = vkeyy;
-    paramVDG[6] = vshow;  // 1 - Ativa o Teclado com show on touch, 2 - Esconde e desativa
-    paramVDG[7] = venter; // Tipo de tecla final (0 - end ou 1 - sinal de enter)
-    paramVDG[8] = 0x00;   // Caps (0 - Minus, 1 - Maius)
-    paramVDG[9] = vtipo;  // Tipo Teclado (0 - alpha, 1 - numerico, 2 - simbolos)
+        paramVDG[0] = 9;
+        paramVDG[1] = 0xDB;
+        paramVDG[2] = vkeyx >> 8;
+        paramVDG[3] = vkeyx;
+        paramVDG[4] = vkeyy >> 8;
+        paramVDG[5] = vkeyy;
+        paramVDG[6] = vshow;  // 1 - Ativa o Teclado com show on touch, 2 - Esconde e desativa
+        paramVDG[7] = venter; // Tipo de tecla final (0 - end ou 1 - sinal de enter)
+        paramVDG[8] = 0x00;   // Caps (0 - Minus, 1 - Maius)
+        paramVDG[9] = vtipo;  // Tipo Teclado (0 - alpha, 1 - numerico, 2 - simbolos)
 
-    commVDG(paramVDG);
+        commVDG(paramVDG);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -823,13 +851,16 @@ void processCmd(void) {
 //-----------------------------------------------------------------------------
 void clearScr(unsigned int pcolor) {
     unsigned char ix, iy;
-    paramVDG[0] = 3;
-    paramVDG[1] = 0xD0;
-    paramVDG[2] = pcolor >> 8;
-    paramVDG[3] = pcolor;
-    commVDG(paramVDG);
 
-    locate(0, 0, REPOS_CURSOR);
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] = 3;
+        paramVDG[1] = 0xD0;
+        paramVDG[2] = pcolor >> 8;
+        paramVDG[3] = pcolor;
+        commVDG(paramVDG);
+
+        locate(0, 0, REPOS_CURSOR);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -877,115 +908,127 @@ void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
     unsigned char *ss = (unsigned char*)msgs;
     unsigned int xcolor = pcolor, xbcolor = pbcolor;
 
-    verifyMGI();
+    #ifdef __USE_TFT_VDG__
+        verifyMGI();
 
-    if (voutput == 2) {
-        xcolor = vcorwf;
-        xbcolor = vcorwb;
-    }
+        if (voutput == 2) {
+            xcolor = vcorwf;
+            xbcolor = vcorwb;
+        }
 
-    while (*ss) {
-      if (*ss >= 0x20)
-          ix++;
-      else
-          ichange = 1;
+        while (*ss) {
+          if (*ss >= 0x20)
+              ix++;
+          else
+              ichange = 1;
 
-      if ((vcol + (ix - 10)) > vxmax)
-          ichange = 2;
+          if ((vcol + (ix - 10)) > vxmax)
+              ichange = 2;
 
-      ss++;
+          ss++;
 
-      if (!*ss && !ichange)
-         ichange = 3;
+          if (!*ss && !ichange)
+             ichange = 3;
 
-      if (ichange) {
-         // Manda Sequencia de Controle
-         if (ix > 10) {
-            paramVDG[0] = ix;
-            paramVDG[1] = 0xD1;
-            paramVDG[2] = ((vcol * 8) + voverx) >> 8;
-            paramVDG[3] = (vcol * 8) + voverx;
-            paramVDG[4] = ((vlin * 10) + vovery) >> 8;
-            paramVDG[5] = (vlin * 10) + vovery;
-            paramVDG[6] = 8;
-            paramVDG[7] = xcolor >> 8;
-            paramVDG[8] = xcolor;
-            paramVDG[9] = xbcolor >> 8;
-            paramVDG[10] = xbcolor;
-         }
+          if (ichange) {
+             // Manda Sequencia de Controle
+             if (ix > 10) {
+                paramVDG[0] = ix;
+                paramVDG[1] = 0xD1;
+                paramVDG[2] = ((vcol * 8) + voverx) >> 8;
+                paramVDG[3] = (vcol * 8) + voverx;
+                paramVDG[4] = ((vlin * 10) + vovery) >> 8;
+                paramVDG[5] = (vlin * 10) + vovery;
+                paramVDG[6] = 8;
+                paramVDG[7] = xcolor >> 8;
+                paramVDG[8] = xcolor;
+                paramVDG[9] = xbcolor >> 8;
+                paramVDG[10] = xbcolor;
+             }
 
-         if (ichange == 1)
-            ix++;
+             if (ichange == 1)
+                ix++;
 
-         iy = 11;
-         while (*msgs && iy <= ix) {
-            if (*msgs >= 0x20 && *msgs <= 0x7F) {
-                paramVDG[iy] = *msgs;
-                paramVDG[iy + 1] = '\0';
-                vcol = vcol + 1;
+             iy = 11;
+             while (*msgs && iy <= ix) {
+                if (*msgs >= 0x20 && *msgs <= 0x7F) {
+                    paramVDG[iy] = *msgs;
+                    paramVDG[iy + 1] = '\0';
+                    vcol = vcol + 1;
+                }
+                else {
+                    if (*msgs == 0x0D) {
+                        vcol = 0;
+                    }
+                    else if (*msgs == 0x0A) {
+                        vcol = 0;  // So para teste, depois tiro e coloco '\r' junto com '\n'
+                        vlin = vlin + 1;
+                    }
+
+                    locate(vcol, vlin, NOREPOS_CURSOR);
+                }
+
+                msgs++;
+                iy++;
             }
-            else {
-                if (*msgs == 0x0D) {
-                    vcol = 0;
-                }
-                else if (*msgs == 0x0A) {
-                    vcol = 0;  // So para teste, depois tiro e coloco '\r' junto com '\n'
-                    vlin = vlin + 1;
-                }
+            commVDG(paramVDG);
 
+            if (ichange == 2) {
+                vcol = 0;
+                vlin = vlin + 1;
                 locate(vcol, vlin, NOREPOS_CURSOR);
             }
 
-            msgs++;
-            iy++;
+            ichange = 0;
+            ix = 10;
+          }
         }
-        commVDG(paramVDG);
+    #endif
 
-        if (ichange == 2) {
-            vcol = 0;
-            vlin = vlin + 1;
-            locate(vcol, vlin, NOREPOS_CURSOR);
-        }
-
-        ichange = 0;
-        ix = 10;
-      }
-    }
+    #ifdef __USE_UART_MON__
+        puts(msgs);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsigned char ptipo) {
     unsigned int xcolor = pcolor, xbcolor = pbcolor;
 
-    verifyMGI();
+    #ifdef __USE_TFT_VDG__
+        verifyMGI();
 
-    if (voutput == 2) {
-        xcolor = vcorwf;
-        xbcolor = vcorwb;
-    }
+        if (voutput == 2) {
+            xcolor = vcorwf;
+            xbcolor = vcorwb;
+        }
 
-    paramVDG[0] = 0x0B;
-    paramVDG[1] = 0xD2;
-    paramVDG[2] = ((vcol * 8) + voverx) >> 8;
-    paramVDG[3] = (vcol * 8) + voverx;
-    paramVDG[4] = ((vlin * 10) + vovery) >> 8;
-    paramVDG[5] = (vlin * 10) + vovery;
-    paramVDG[6] = 8;
-    paramVDG[7] = xcolor >> 8;
-    paramVDG[8] = xcolor;
-    paramVDG[9] = xbcolor >> 8;
-    paramVDG[10] = xbcolor;
-    paramVDG[11] = pbyte;
-    commVDG(paramVDG);
+        paramVDG[0] = 0x0B;
+        paramVDG[1] = 0xD2;
+        paramVDG[2] = ((vcol * 8) + voverx) >> 8;
+        paramVDG[3] = (vcol * 8) + voverx;
+        paramVDG[4] = ((vlin * 10) + vovery) >> 8;
+        paramVDG[5] = (vlin * 10) + vovery;
+        paramVDG[6] = 8;
+        paramVDG[7] = xcolor >> 8;
+        paramVDG[8] = xcolor;
+        paramVDG[9] = xbcolor >> 8;
+        paramVDG[10] = xbcolor;
+        paramVDG[11] = pbyte;
+        commVDG(paramVDG);
 
-    if (ptipo == ADD_POS_SCR) {
-        vcol = vcol + 1;
+        if (ptipo == ADD_POS_SCR) {
+            vcol = vcol + 1;
 
-        if ((vlin == (vymax - 1)) && (vcol == vxmax))
-            vcol = vxmax - 1;
+            if ((vlin == (vymax - 1)) && (vcol == vxmax))
+                vcol = vxmax - 1;
 
-        locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
-    }
+            locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
+        }
+    #endif
+
+    #ifdef __USE_UART_MON__
+        putc((char*) pbyte);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -995,41 +1038,43 @@ void locate(unsigned char pcol, unsigned char plin, unsigned char pcur) {
     unsigned int vbytepic = 0;
     unsigned int ij, ik;
 
-    if (pcol > vxmax) {
-        pcol = 0;
-        plin++;
-        ichange = 1;
-    }
-
-    if (plin > vymax) {
-        pcol = 0;
-        plin = vymax;
-
-        if (voutput == 1) {
-            paramVDG[0] = 4;
-            paramVDG[1] = 0xD9;
-            paramVDG[2] = 10;    // qtd de linhas que ocupa um char na tela
-            paramVDG[3] = vcorb >> 8;
-            paramVDG[4] = vcorb;
-            commVDG(paramVDG);
-        }
-        else {
-            // Criar scroll dentro da janela, ou dar upgrade no scroll atual
+    #ifdef __USE_TFT_VDG__
+        if (pcol > vxmax) {
             pcol = 0;
-            plin = 0;
+            plin++;
+            ichange = 1;
         }
 
-        ichange = 1;
-    }
+        if (plin > vymax) {
+            pcol = 0;
+            plin = vymax;
 
-    vcol = pcol;
-    vlin = plin;
+            if (voutput == 1) {
+                paramVDG[0] = 4;
+                paramVDG[1] = 0xD9;
+                paramVDG[2] = 10;    // qtd de linhas que ocupa um char na tela
+                paramVDG[3] = vcorb >> 8;
+                paramVDG[4] = vcorb;
+                commVDG(paramVDG);
+            }
+            else {
+                // Criar scroll dentro da janela, ou dar upgrade no scroll atual
+                pcol = 0;
+                plin = 0;
+            }
 
-    if (pcur == REPOS_CURSOR || (pcur == REPOS_CURSOR_ON_CHANGE && ichange)) {
-        if (voutput == 1)
-            writec(0x08, vcorf, vcorb, ADD_POS_SCR);
-        vcol = vcol - 1;
-    }
+            ichange = 1;
+        }
+
+        vcol = pcol;
+        vlin = plin;
+
+        if (pcur == REPOS_CURSOR || (pcur == REPOS_CURSOR_ON_CHANGE && ichange)) {
+            if (voutput == 1)
+                writec(0x08, vcorf, vcorb, ADD_POS_SCR);
+            vcol = vcol - 1;
+        }
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -2815,59 +2860,64 @@ unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsig
 void writesxy(unsigned int x, unsigned int y, unsigned char sizef, char *msgs, unsigned int pcolor, unsigned int pbcolor) {
     unsigned char ix = 10, *ss = (unsigned char*)msgs;
     unsigned int iy;
-    while (*ss) {
-      if (*ss >= 0x20)
-          ix++;
-      ss++;
-    }
 
-    // Manda Sequencia de Controle
-    if (ix > 10) {
-        paramVDG[0] = ix;
-        paramVDG[1] = 0xD1;
-        paramVDG[2] = x >> 8;
-        paramVDG[3] = x;
-        paramVDG[4] = y >> 8;
-        paramVDG[5] = y;
+    #ifdef __USE_TFT_VDG__
+        while (*ss) {
+          if (*ss >= 0x20)
+              ix++;
+          ss++;
+        }
+
+        // Manda Sequencia de Controle
+        if (ix > 10) {
+            paramVDG[0] = ix;
+            paramVDG[1] = 0xD1;
+            paramVDG[2] = x >> 8;
+            paramVDG[3] = x;
+            paramVDG[4] = y >> 8;
+            paramVDG[5] = y;
+            paramVDG[6] = sizef;
+            paramVDG[7] = pcolor >> 8;
+            paramVDG[8] = pcolor;
+            paramVDG[9] = pbcolor >> 8;
+            paramVDG[10] = pbcolor;
+
+            iy = 11;
+            while (*msgs) {
+                if (*msgs >= 0x20 && *msgs <= 0x7F)
+                    paramVDG[iy] = *msgs;
+                msgs++;
+                iy++;
+            }
+
+            commVDG(paramVDG);
+        }
+    #endif
+}
+
+//-----------------------------------------------------------------------------
+void writecxy(unsigned char sizef, unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor) {
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] = 0x0B;
+        paramVDG[1] = 0xD2;
+        paramVDG[2] = pposx >> 8;
+        paramVDG[3] = pposx;
+        paramVDG[4] = pposy >> 8;
+        paramVDG[5] = pposy;
         paramVDG[6] = sizef;
         paramVDG[7] = pcolor >> 8;
         paramVDG[8] = pcolor;
         paramVDG[9] = pbcolor >> 8;
         paramVDG[10] = pbcolor;
-
-        iy = 11;
-        while (*msgs) {
-            if (*msgs >= 0x20 && *msgs <= 0x7F)
-                paramVDG[iy] = *msgs;
-            msgs++;
-            iy++;
-        }
+        paramVDG[11] = pbyte;
 
         commVDG(paramVDG);
-    }
-}
 
-//-----------------------------------------------------------------------------
-void writecxy(unsigned char sizef, unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor) {
-    paramVDG[0] = 0x0B;
-    paramVDG[1] = 0xD2;
-    paramVDG[2] = pposx >> 8;
-    paramVDG[3] = pposx;
-    paramVDG[4] = pposy >> 8;
-    paramVDG[5] = pposy;
-    paramVDG[6] = sizef;
-    paramVDG[7] = pcolor >> 8;
-    paramVDG[8] = pcolor;
-    paramVDG[9] = pbcolor >> 8;
-    paramVDG[10] = pbcolor;
-    paramVDG[11] = pbyte;
+        pposx = pposx + sizef;
 
-    commVDG(paramVDG);
-
-    pposx = pposx + sizef;
-
-    if ((pposx + sizef) > vxgmax)
-        pposx = pposx - sizef;
+        if ((pposx + sizef) > vxgmax)
+            pposx = pposx - sizef;
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -2878,107 +2928,119 @@ void locatexy(unsigned int xx, unsigned int yy) {
 
 //-----------------------------------------------------------------------------
 void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
-    paramVDG[0] = 9;
-    paramVDG[1] = 0xEA;
-    paramVDG[2] = yi >> 8;
-    paramVDG[3] = yi;
-    paramVDG[4] = xi >> 8;
-    paramVDG[5] = xi;
-    paramVDG[6] = pheight >> 8;
-    paramVDG[7] = pheight;
-    paramVDG[8] = pwidth >> 8;
-    paramVDG[9] = pwidth;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] = 9;
+        paramVDG[1] = 0xEA;
+        paramVDG[2] = yi >> 8;
+        paramVDG[3] = yi;
+        paramVDG[4] = xi >> 8;
+        paramVDG[5] = xi;
+        paramVDG[6] = pheight >> 8;
+        paramVDG[7] = pheight;
+        paramVDG[8] = pwidth >> 8;
+        paramVDG[9] = pwidth;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
-    paramVDG[0] =  9;
-    paramVDG[1] =  0xEB;
-    paramVDG[2] =  yi >> 8;
-    paramVDG[3] =  yi;
-    paramVDG[4] =  xi >> 8;
-    paramVDG[5] =  xi;
-    paramVDG[6] =  pheight >> 8;
-    paramVDG[7] =  pheight;
-    paramVDG[8] =  pwidth >> 8;
-    paramVDG[9] =  pwidth;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  9;
+        paramVDG[1] =  0xEB;
+        paramVDG[2] =  yi >> 8;
+        paramVDG[3] =  yi;
+        paramVDG[4] =  xi >> 8;
+        paramVDG[5] =  xi;
+        paramVDG[6] =  pheight >> 8;
+        paramVDG[7] =  pheight;
+        paramVDG[8] =  pwidth >> 8;
+        paramVDG[9] =  pwidth;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void SetDot(unsigned int x, unsigned int y, unsigned int color) {
-    paramVDG[0] =  9;
-    paramVDG[1] =  0xD7;
-    paramVDG[2] =  x >> 8;
-    paramVDG[3] =  x;
-    paramVDG[4] =  y >> 8;
-    paramVDG[5] =  y;
-    paramVDG[6] =  0;
-    paramVDG[7] =  color >> 8;
-    paramVDG[8] =  color;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  9;
+        paramVDG[1] =  0xD7;
+        paramVDG[2] =  x >> 8;
+        paramVDG[3] =  x;
+        paramVDG[4] =  y >> 8;
+        paramVDG[5] =  y;
+        paramVDG[6] =  0;
+        paramVDG[7] =  color >> 8;
+        paramVDG[8] =  color;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void FillRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pcor) {
     unsigned int xf, yf;
 
-    xf = (xi + pwidth);
-    yf = (yi + pheight);
+    #ifdef __USE_TFT_VDG__
+        xf = (xi + pwidth);
+        yf = (yi + pheight);
 
-    paramVDG[0] =  11;
-    paramVDG[1] =  0xD3;
-    paramVDG[2] =  xi >> 8;
-    paramVDG[3] =  xi;
-    paramVDG[4] =  yi >> 8;
-    paramVDG[5] =  yi;
-    paramVDG[6] =  xf >> 8;
-    paramVDG[7] =  xf;
-    paramVDG[8] =  yf >> 8;
-    paramVDG[9] =  yf;
-    paramVDG[10] =  pcor >> 8;
-    paramVDG[11] =  pcor;
-    commVDG(paramVDG);    
+        paramVDG[0] =  11;
+        paramVDG[1] =  0xD3;
+        paramVDG[2] =  xi >> 8;
+        paramVDG[3] =  xi;
+        paramVDG[4] =  yi >> 8;
+        paramVDG[5] =  yi;
+        paramVDG[6] =  xf >> 8;
+        paramVDG[7] =  xf;
+        paramVDG[8] =  yf >> 8;
+        paramVDG[9] =  yf;
+        paramVDG[10] =  pcor >> 8;
+        paramVDG[11] =  pcor;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void DrawLine(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2, unsigned int color) {
-    paramVDG[0] =  11;
-    paramVDG[1] =  0xD4;
-    paramVDG[2] =  x1 >> 8;
-    paramVDG[3] =  x1;
-    paramVDG[4] =  y1 >> 8;
-    paramVDG[5] =  y1;
-    paramVDG[6] =  x2 >> 8;
-    paramVDG[7] =  x2;
-    paramVDG[8] =  y2 >> 8;
-    paramVDG[9] =  y2;
-    paramVDG[10] =  color >> 8;
-    paramVDG[11] =  color;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  11;
+        paramVDG[1] =  0xD4;
+        paramVDG[2] =  x1 >> 8;
+        paramVDG[3] =  x1;
+        paramVDG[4] =  y1 >> 8;
+        paramVDG[5] =  y1;
+        paramVDG[6] =  x2 >> 8;
+        paramVDG[7] =  x2;
+        paramVDG[8] =  y2 >> 8;
+        paramVDG[9] =  y2;
+        paramVDG[10] =  color >> 8;
+        paramVDG[11] =  color;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void DrawRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int color) {
     unsigned int xf, yf;
 
-    xf = (xi + pwidth);
-    yf = (yi + pheight);
+    #ifdef __USE_TFT_VDG__
+        xf = (xi + pwidth);
+        yf = (yi + pheight);
 
-    paramVDG[0] =  11;
-    paramVDG[1] =  0xD5;
-    paramVDG[2] =  xi >> 8;
-    paramVDG[3] =  xi;
-    paramVDG[4] =  yi >> 8;
-    paramVDG[5] =  yi;
-    paramVDG[6] =  xf >> 8;
-    paramVDG[7] =  xf;
-    paramVDG[8] =  yf >> 8;
-    paramVDG[9] =  yf;
-    paramVDG[10] =  color >> 8;
-    paramVDG[11] =  color;
-    commVDG(paramVDG);    
+        paramVDG[0] =  11;
+        paramVDG[1] =  0xD5;
+        paramVDG[2] =  xi >> 8;
+        paramVDG[3] =  xi;
+        paramVDG[4] =  yi >> 8;
+        paramVDG[5] =  yi;
+        paramVDG[6] =  xf >> 8;
+        paramVDG[7] =  xf;
+        paramVDG[8] =  yf >> 8;
+        paramVDG[9] =  yf;
+        paramVDG[10] =  color >> 8;
+        paramVDG[11] =  color;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -2988,111 +3050,121 @@ void DrawRoundRect(void) {
 	int tSwitch;
     unsigned int x1 = 0, y1, xt, yt, wt;
 
-    xi = vparam[0];
-    yi = vparam[1];
-    pwidth = vparam[2];
-    pheight = vparam[3];
-    radius = vparam[4];
-    color = vparam[5];
+    #ifdef __USE_TFT_VDG__
+        xi = vparam[0];
+        yi = vparam[1];
+        pwidth = vparam[2];
+        pheight = vparam[3];
+        radius = vparam[4];
+        color = vparam[5];
 
-    y1 = radius;
+        y1 = radius;
 
-	tSwitch = 3 - 2 * radius;
+    	tSwitch = 3 - 2 * radius;
 
-	while (x1 <= y1) {
-	    xt = xi + radius - x1;
-	    yt = yi + radius - y1;
-	    SetDot(xt, yt, color);
+    	while (x1 <= y1) {
+    	    xt = xi + radius - x1;
+    	    yt = yi + radius - y1;
+    	    SetDot(xt, yt, color);
 
-	    xt = xi + radius - y1;
-	    yt = yi + radius - x1;
-	    SetDot(xt, yt, color);
+    	    xt = xi + radius - y1;
+    	    yt = yi + radius - x1;
+    	    SetDot(xt, yt, color);
 
-        xt = xi + pwidth-radius + x1;
-	    yt = yi + radius - y1;
-	    SetDot(xt, yt, color);
+            xt = xi + pwidth-radius + x1;
+    	    yt = yi + radius - y1;
+    	    SetDot(xt, yt, color);
 
-        xt = xi + pwidth-radius + y1;
-	    yt = yi + radius - x1;
-	    SetDot(xt, yt, color);
+            xt = xi + pwidth-radius + y1;
+    	    yt = yi + radius - x1;
+    	    SetDot(xt, yt, color);
 
-        xt = xi + pwidth-radius + x1;
-        yt = yi + pheight-radius + y1;
-	    SetDot(xt, yt, color);
+            xt = xi + pwidth-radius + x1;
+            yt = yi + pheight-radius + y1;
+    	    SetDot(xt, yt, color);
 
-        xt = xi + pwidth-radius + y1;
-        yt = yi + pheight-radius + x1;
-	    SetDot(xt, yt, color);
+            xt = xi + pwidth-radius + y1;
+            yt = yi + pheight-radius + x1;
+    	    SetDot(xt, yt, color);
 
-	    xt = xi + radius - x1;
-        yt = yi + pheight-radius + y1;
-	    SetDot(xt, yt, color);
+    	    xt = xi + radius - x1;
+            yt = yi + pheight-radius + y1;
+    	    SetDot(xt, yt, color);
 
-	    xt = xi + radius - y1;
-        yt = yi + pheight-radius + x1;
-	    SetDot(xt, yt, color);
+    	    xt = xi + radius - y1;
+            yt = yi + pheight-radius + x1;
+    	    SetDot(xt, yt, color);
 
-	    if (tSwitch < 0) {
-	    	tSwitch += (4 * x1 + 6);
-	    } else {
-	    	tSwitch += (4 * (x1 - y1) + 10);
-	    	y1--;
-	    }
-	    x1++;
-	}
+    	    if (tSwitch < 0) {
+    	    	tSwitch += (4 * x1 + 6);
+    	    } else {
+    	    	tSwitch += (4 * (x1 - y1) + 10);
+    	    	y1--;
+    	    }
+    	    x1++;
+    	}
 
-    xt = xi + radius;
-    yt = yi + pheight;
-    wt = pwidth - (2 * radius);
-	DrawHoriLine(xt, yi, wt, color);		// top
-	DrawHoriLine(xt, yt, wt, color);	// bottom
+        xt = xi + radius;
+        yt = yi + pheight;
+        wt = pwidth - (2 * radius);
+    	DrawHoriLine(xt, yi, wt, color);		// top
+    	DrawHoriLine(xt, yt, wt, color);	// bottom
 
-    xt = xi + pwidth;
-    yt = yi + radius;
-    wt = pheight - (2 * radius);
-	DrawVertLine(xi, yt, wt, color);		// left
-	DrawVertLine(xt, yt, wt, color);	// right
+        xt = xi + pwidth;
+        yt = yi + radius;
+        wt = pheight - (2 * radius);
+    	DrawVertLine(xi, yt, wt, color);		// left
+    	DrawVertLine(xt, yt, wt, color);	// right
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void DrawCircle(unsigned int xi, unsigned int yi, unsigned char pang, unsigned char pfil, unsigned int pcor) {
-    paramVDG[0] =  10;
-    paramVDG[1] =  0xD6;
-    paramVDG[2] =  xi >> 8;
-    paramVDG[3] =  xi;
-    paramVDG[4] =  yi >> 8;
-    paramVDG[5] =  yi;
-    paramVDG[6] =  pang;
-    paramVDG[7] =  pfil;
-    paramVDG[8] =  0;
-    paramVDG[9] =  pcor >> 8;
-    paramVDG[10] =  pcor;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  10;
+        paramVDG[1] =  0xD6;
+        paramVDG[2] =  xi >> 8;
+        paramVDG[3] =  xi;
+        paramVDG[4] =  yi >> 8;
+        paramVDG[5] =  yi;
+        paramVDG[6] =  pang;
+        paramVDG[7] =  pfil;
+        paramVDG[8] =  0;
+        paramVDG[9] =  pcor >> 8;
+        paramVDG[10] =  pcor;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void InvertRect(unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight) {
-    paramVDG[0] =  9;
-    paramVDG[1] =  0xEC;
-    paramVDG[2] =  x >> 8;
-    paramVDG[3] =  x;
-    paramVDG[4] =  y >> 8;
-    paramVDG[5] =  y;
-    paramVDG[6] =  pheight >> 8;
-    paramVDG[7] =  pheight;
-    paramVDG[8] =  pwidth >> 8;
-    paramVDG[9] =  pwidth;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  9;
+        paramVDG[1] =  0xEC;
+        paramVDG[2] =  x >> 8;
+        paramVDG[3] =  x;
+        paramVDG[4] =  y >> 8;
+        paramVDG[5] =  y;
+        paramVDG[6] =  pheight >> 8;
+        paramVDG[7] =  pheight;
+        paramVDG[8] =  pwidth >> 8;
+        paramVDG[9] =  pwidth;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void SelRect(unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight) {
-    DrawRect((x - 1), (y - 1), (pwidth + 2), (pheight + 2), Red);
+    #ifdef __USE_TFT_VDG__
+        DrawRect((x - 1), (y - 1), (pwidth + 2), (pheight + 2), Red);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void PutImage(unsigned char* vimage, unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight) {
-    /* ver como fazer */
+    #ifdef __USE_TFT_VDG__
+        /* ver como fazer */
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3101,49 +3173,51 @@ void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) {
     unsigned char* pimage;
     unsigned char ic, igh;
 
-    ic = 0;
-    iz = 0;
-    pw = 24;
-    ph = 24;
-    pimage = vimage;
+    #ifdef __USE_TFT_VDG__
+        ic = 0;
+        iz = 0;
+        pw = 24;
+        ph = 24;
+        pimage = vimage;
 
-    // Acumula dados, enviando em 9 vezes de 64 x 16 bits
-    paramVDG[0] =  130;
-    paramVDG[1] =  0xDE;
-    paramVDG[2] =  ic;
-    igh = 3;
-	for (ix = 0; ix < 576; ix++) {
-        paramVDG[igh++] =  *pimage++ & 0x00FF;
-        paramVDG[igh++] =  *pimage++ & 0x00FF;
-        iz++;
+        // Acumula dados, enviando em 9 vezes de 64 x 16 bits
+        paramVDG[0] =  130;
+        paramVDG[1] =  0xDE;
+        paramVDG[2] =  ic;
+        igh = 3;
+    	for (ix = 0; ix < 576; ix++) {
+            paramVDG[igh++] =  *pimage++ & 0x00FF;
+            paramVDG[igh++] =  *pimage++ & 0x00FF;
+            iz++;
 
-		if (iz == 64 && ic < 8) {
-	        ic++;
+    		if (iz == 64 && ic < 8) {
+    	        ic++;
 
-            commVDG(paramVDG);    
-        
-            paramVDG[0] =  130;
-            paramVDG[1] =  0xDE;
-            paramVDG[2] =  ic;
-            igh = 3;
+                commVDG(paramVDG);    
+            
+                paramVDG[0] =  130;
+                paramVDG[1] =  0xDE;
+                paramVDG[2] =  ic;
+                igh = 3;
 
-            iz = 0;
-		}
-	}
-    commVDG(paramVDG);    
+                iz = 0;
+    		}
+    	}
+        commVDG(paramVDG);    
 
-    // Mostra a Imagem
-    paramVDG[0] =  9;
-    paramVDG[1] =  0xDF;
-    paramVDG[2] =  x >> 8;
-    paramVDG[3] =  x;
-    paramVDG[4] =  y >> 8;
-    paramVDG[5] =  y;
-    paramVDG[6] =  ph >> 8;
-    paramVDG[7] =  ph;
-    paramVDG[8] =  pw >> 8;
-    paramVDG[9] =  pw;
-    commVDG(paramVDG);    
+        // Mostra a Imagem
+        paramVDG[0] =  9;
+        paramVDG[1] =  0xDF;
+        paramVDG[2] =  x >> 8;
+        paramVDG[3] =  x;
+        paramVDG[4] =  y >> 8;
+        paramVDG[5] =  y;
+        paramVDG[6] =  ph >> 8;
+        paramVDG[7] =  ph;
+        paramVDG[8] =  pw >> 8;
+        paramVDG[9] =  pw;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3152,80 +3226,84 @@ void startMGI(void) {
     unsigned char lc, ll, *ptr_ico, *ptr_prg, *ptr_pos;
     unsigned char* vFinalOSPos;
 
-    paramVDG[0] =  2;
-    paramVDG[1] =  0xD8;
-    paramVDG[2] =  0;
-    commVDG(paramVDG);    
+    #ifdef __USE_TFT_VDG__
+        paramVDG[0] =  2;
+        paramVDG[1] =  0xD8;
+        paramVDG[2] =  0;
+        commVDG(paramVDG);    
 
-    ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
-    ptr_ico = ptr_pos + 32;
-    ptr_prg = ptr_ico + 320;
+        ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
+        ptr_ico = ptr_pos + 32;
+        ptr_prg = ptr_ico + 320;
 
-    for (lc = 0; lc <= 31; lc++) {
-        *ptr_pos++ = 0x00;
-        for (ll = 0; ll <= 9; ll++) {
-            *ptr_ico++ = 0x00;
-            *ptr_prg++ = 0x00;
+        for (lc = 0; lc <= 31; lc++) {
+            *ptr_pos++ = 0x00;
+            for (ll = 0; ll <= 9; ll++) {
+                *ptr_ico++ = 0x00;
+                *ptr_prg++ = 0x00;
+            }
         }
-    }
 
-    vkeyopen = 0;
-    voutput = 2;
+        vkeyopen = 0;
+        voutput = 2;
 
-    vcorwf = White;
-    vcorwb = Blue;
+        vcorwf = White;
+        vcorwb = Blue;
 
-    vparamstr[0] = '\0';
-    vparam[0] = 20;
-    vparam[1] = 80;
-    vparam[2] = 280;
-    vparam[3] = 100;
-    vparam[4] = BTNONE;
-    showWindow();
+        vparamstr[0] = '\0';
+        vparam[0] = 20;
+        vparam[1] = 80;
+        vparam[2] = 280;
+        vparam[3] = 100;
+        vparam[4] = BTNONE;
+        showWindow();
 
-    writesxy(140,85,16,"MGI",vcorwf,vcorwb);
-    writesxy(74,105,8,"Graphical Interface",vcorwf,vcorwb);
-    writesxy(94,166,8,"Please Wait...",vcorwf,vcorwb);
+        writesxy(140,85,16,"MGI",vcorwf,vcorwb);
+        writesxy(74,105,8,"Graphical Interface",vcorwf,vcorwb);
+        writesxy(94,166,8,"Please Wait...",vcorwf,vcorwb);
 
-    writesxy(86,155,8,"Loading Config",vcorwf,vcorwb);
-    vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_MGICFG);
-    _strcat(vnomefile,"MMSJMGI",".CFG");
-    loadFile(vnomefile, (unsigned short*)vFinalOSPos);
+        writesxy(86,155,8,"Loading Config",vcorwf,vcorwb);
+        vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_MGICFG);
+        _strcat(vnomefile,"MMSJMGI",".CFG");
+        loadFile(vnomefile, (unsigned short*)vFinalOSPos);
 
-    writesxy(86,155,8,"Loading Icons ",vcorwf,vcorwb);
-    vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_ICONES);
-    _strcat(vnomefile,"MOREICON",".LIB");
-    loadFile(vnomefile, (unsigned short*)vFinalOSPos);
+        writesxy(86,155,8,"Loading Icons ",vcorwf,vcorwb);
+        vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_ICONES);
+        _strcat(vnomefile,"MOREICON",".LIB");
+        loadFile(vnomefile, (unsigned short*)vFinalOSPos);
 
-    redrawMain();
+        redrawMain();
 
-    while(editortela());
+        while(editortela());
 
-    voutput = 1;
-    vcol = 0;
-    vlin = 0;
-    voverx = 0;
-    vovery = 0;
-    vxmaxold = 0;
-    vymaxold = 0;
+        voutput = 1;
+        vcol = 0;
+        vlin = 0;
+        voverx = 0;
+        vovery = 0;
+        vxmaxold = 0;
+        vymaxold = 0;
 
-    clearScr(vcorb);
+        clearScr(vcorb);
 
-    paramVDG[0] = 2;
-    paramVDG[1] = 0xD8;
-    paramVDG[2] = 1;
-    commVDG(paramVDG);    
+        paramVDG[0] = 2;
+        paramVDG[1] = 0xD8;
+        paramVDG[2] = 1;
+        commVDG(paramVDG);    
+    #endif
 }
 
 //-----------------------------------------------------------------------------
 void redrawMain(void) {
-    clearScr(Blue);
+    #ifdef __USE_TFT_VDG__
+        clearScr(Blue);
 
-    // Desenhar Barra Menu Principal / Status
-    desenhaMenu();
+        // Desenhar Barra Menu Principal / Status
+        desenhaMenu();
 
-    // Desenhar Icones da tela (lendo do disco)
-    desenhaIconesUsuario();
+        // Desenhar Icones da tela (lendo do disco)
+        desenhaIconesUsuario();
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3233,15 +3311,17 @@ void desenhaMenu(void) {
     unsigned char lc;
     unsigned int vx, vy;
 
-    vx = COLMENU;
-    vy = LINMENU;
+    #ifdef __USE_TFT_VDG__
+        vx = COLMENU;
+        vy = LINMENU;
 
-    for (lc = 50; lc <= 56; lc++) {
-        MostraIcone(vx, vy, lc);
-        vx += 32;
-    }
+        for (lc = 50; lc <= 56; lc++) {
+            MostraIcone(vx, vy, lc);
+            vx += 32;
+        }
 
-    FillRect(0, (vygmax - 35), vxgmax, 35, l_gray);
+        FillRect(0, (vygmax - 35), vxgmax, 35, l_gray);
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3249,43 +3329,45 @@ void desenhaIconesUsuario(void) {
   unsigned int vx, vy;
   unsigned char lc, *ptr_ico, *ptr_prg, *ptr_pos;
 
-  // COLOCAR ICONSPERLINE = 10
-  // COLOCAR SPACEICONS = 8
-  
-  next_pos = 0;
+  #ifdef __USE_TFT_VDG__
+      // COLOCAR ICONSPERLINE = 10
+      // COLOCAR SPACEICONS = 8
+      
+      next_pos = 0;
 
-  ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
-  ptr_ico = ptr_pos + 32;
-  ptr_prg = ptr_ico + 320;
+      ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
+      ptr_ico = ptr_pos + 32;
+      ptr_prg = ptr_ico + 320;
 
-  for(lc = 0; lc <= (ICONSPERLINE * 4 - 1); lc++) {
-    ptr_pos = ptr_pos + lc;
-    ptr_ico = ptr_ico + (lc * 10);
-    ptr_prg = ptr_prg + (lc * 10);
+      for(lc = 0; lc <= (ICONSPERLINE * 4 - 1); lc++) {
+        ptr_pos = ptr_pos + lc;
+        ptr_ico = ptr_ico + (lc * 10);
+        ptr_prg = ptr_prg + (lc * 10);
 
-    if (*ptr_prg != 0 && *ptr_ico != 0) {
-      if (*ptr_pos <= (ICONSPERLINE - 1)) {
-        vx = COLINIICONS + (24 + SPACEICONS) * *ptr_pos;
-        vy = 40;
+        if (*ptr_prg != 0 && *ptr_ico != 0) {
+          if (*ptr_pos <= (ICONSPERLINE - 1)) {
+            vx = COLINIICONS + (24 + SPACEICONS) * *ptr_pos;
+            vy = 40;
+          }
+          else if (*ptr_pos <= (ICONSPERLINE * 2 - 1)) {
+            vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
+            vy = 72;
+          }
+          else if (*ptr_pos <= (ICONSPERLINE * 3 - 1)) {
+            vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
+            vy = 104;
+          }
+          else {
+            vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE * 2);
+            vy = 136;
+          }
+
+          MostraIcone(vx, vy, lc);
+
+          next_pos = next_pos + 1;
+        }
       }
-      else if (*ptr_pos <= (ICONSPERLINE * 2 - 1)) {
-        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
-        vy = 72;
-      }
-      else if (*ptr_pos <= (ICONSPERLINE * 3 - 1)) {
-        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
-        vy = 104;
-      }
-      else {
-        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE * 2);
-        vy = 136;
-      }
-
-      MostraIcone(vx, vy, lc);
-
-      next_pos = next_pos + 1;
-    }
-  }
+  #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3294,26 +3376,28 @@ void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
     unsigned char *ptr_prg;
     unsigned char *ptr_viconef;
 
-    ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
+    #ifdef __USE_TFT_VDG__
+        ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
 
-    // Procura Icone no Disco se Nao for Padrao
-    if (vicone < 50) {
-        ptr_prg = ptr_prg + (vicone * 10);
-        _strcat(vnomefile,(char*)ptr_prg,".ICO");
-        loadFile(vnomefile, (unsigned short*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
-        if (verro)
-            vicone = 59;
-        else
-            ptr_viconef = (unsigned char*)viconef;
-    }
+        // Procura Icone no Disco se Nao for Padrao
+        if (vicone < 50) {
+            ptr_prg = ptr_prg + (vicone * 10);
+            _strcat(vnomefile,(char*)ptr_prg,".ICO");
+            loadFile(vnomefile, (unsigned short*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+            if (verro)
+                vicone = 59;
+            else
+                ptr_viconef = (unsigned char*)viconef;
+        }
 
-    if (vicone >= 50) {
-        vicone -= 50;
-        ptr_viconef = (unsigned char*)(vFinalOS + (MEM_POS_ICONES + (1152 * vicone)));
-    }
+        if (vicone >= 50) {
+            vicone -= 50;
+            ptr_viconef = (unsigned char*)(vFinalOS + (MEM_POS_ICONES + (1152 * vicone)));
+        }
 
-    // Mostra Icone
-    PutIcone(ptr_viconef, vvx, vvy);
+        // Mostra Icone
+        PutIcone(ptr_viconef, vvx, vvy);
+    #endif
 }
 
 //--------------------------------------------------------------------------
@@ -3323,58 +3407,60 @@ unsigned char editortela(void) {
     unsigned int vbytepic;
     unsigned char *ptr_prg;
 
-    VerifyTouchLcd(WHAITTOUCH);
+    #ifdef __USE_TFT_VDG__
+        VerifyTouchLcd(WHAITTOUCH);
 
-    if (vposty <= 30)
-        vresp = new_menu();
-    else {
-        vposiconx = COLINIICONS;
-        vposicony = 40;
-        vpos = 0;
+        if (vposty <= 30)
+            vresp = new_menu();
+        else {
+            vposiconx = COLINIICONS;
+            vposicony = 40;
+            vpos = 0;
 
-        if (vposty >= 136) {
-            vpos = ICONSPERLINE * 3;
-            vposicony = 136;
-        }
-        else if (vposty >= 30) {
-            vpos = ICONSPERLINE * 2;
-            vposicony = 104;
-        }
-        else if (vposty >= 30) {
-            vpos = ICONSPERLINE;
-            vposicony = 72;
-        }
-
-        if (vpostx >= COLINIICONS && vpostx <= (COLINIICONS + (24 + SPACEICONS) * ICONSPERLINE) && vposty >= 40) {
-          cc = 1;
-          for(vx = (COLINIICONS + (24 + SPACEICONS) * (ICONSPERLINE - 1)); vx >= (COLINIICONS + (24 + SPACEICONS)); vx -= (24 + SPACEICONS)) {
-            if (vpostx >= vx) {
-              vpos += ICONSPERLINE - cc;
-              vposiconx = vx;
-              break;
+            if (vposty >= 136) {
+                vpos = ICONSPERLINE * 3;
+                vposicony = 136;
+            }
+            else if (vposty >= 30) {
+                vpos = ICONSPERLINE * 2;
+                vposicony = 104;
+            }
+            else if (vposty >= 30) {
+                vpos = ICONSPERLINE;
+                vposicony = 72;
             }
 
-            cc++;
-          }
+            if (vpostx >= COLINIICONS && vpostx <= (COLINIICONS + (24 + SPACEICONS) * ICONSPERLINE) && vposty >= 40) {
+              cc = 1;
+              for(vx = (COLINIICONS + (24 + SPACEICONS) * (ICONSPERLINE - 1)); vx >= (COLINIICONS + (24 + SPACEICONS)); vx -= (24 + SPACEICONS)) {
+                if (vpostx >= vx) {
+                  vpos += ICONSPERLINE - cc;
+                  vposiconx = vx;
+                  break;
+                }
 
-          ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
-          ptr_prg = ptr_prg + (vpos * 10);
+                cc++;
+              }
 
-          if (*ptr_prg != 0) {
-            InvertRect( vposiconx, vposicony, 24, 24);
+              ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
+              ptr_prg = ptr_prg + (vpos * 10);
 
-            strcpy((char*)vbuf,(char *)ptr_prg);
+              if (*ptr_prg != 0) {
+                InvertRect( vposiconx, vposicony, 24, 24);
 
-            MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+                strcpy((char*)vbuf,(char *)ptr_prg);
 
-            processCmd();
+                MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
 
-            *vbuf = 0x00;
+                processCmd();
 
-            redrawMain();
-          }
+                *vbuf = 0x00;
+
+                redrawMain();
+              }
+            }
         }
-    }
+    #endif
 
     return vresp;
 }
@@ -3384,116 +3470,118 @@ unsigned char new_menu(void) {
     unsigned int vx, vy, lc, vposicony, mx, my, menyi[8], menyf[8];
     unsigned char vpos = 0, vresp, mpos;
 
-    vresp = 1;
+    #ifdef __USE_TFT_VDG__
+        vresp = 1;
 
-    if (vpostx >= COLMENU && vpostx <= (COLMENU + 24)) {
-        mx = 0;
-        my = LINHAMENU;
-        mpos = 0;
+        if (vpostx >= COLMENU && vpostx <= (COLMENU + 24)) {
+            mx = 0;
+            my = LINHAMENU;
+            mpos = 0;
 
-        FillRect(mx,my,128,42,White);
-        DrawRect(mx,my,128,42,Black);
+            FillRect(mx,my,128,42,White);
+            DrawRect(mx,my,128,42,Black);
 
-        mpos += 2;
-        menyi[0] = my + mpos;
-        writesxy(mx + 8,my + mpos,8,"Format",Black,White);
-        mpos += 12;
-        menyf[0] = my + mpos;
-        DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+            mpos += 2;
+            menyi[0] = my + mpos;
+            writesxy(mx + 8,my + mpos,8,"Format",Black,White);
+            mpos += 12;
+            menyf[0] = my + mpos;
+            DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
 
-        mpos += 2;
-        menyi[1] = my + mpos;
-        writesxy(mx + 8,my + mpos,8,"Help",Black,White);
-        mpos += 12;
-        menyf[1] = my + mpos;
-        mpos += 2;
-        menyi[2] = my + mpos;
-        writesxy(mx + 8,my + mpos,8,"About",Black,White);
-        mpos += 12;
-        menyf[2] = my + mpos;
-        DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+            mpos += 2;
+            menyi[1] = my + mpos;
+            writesxy(mx + 8,my + mpos,8,"Help",Black,White);
+            mpos += 12;
+            menyf[1] = my + mpos;
+            mpos += 2;
+            menyi[2] = my + mpos;
+            writesxy(mx + 8,my + mpos,8,"About",Black,White);
+            mpos += 12;
+            menyf[2] = my + mpos;
+            DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
 
-        VerifyTouchLcd(WHAITTOUCH);
+            VerifyTouchLcd(WHAITTOUCH);
 
-        if ((vposty >= my && vposty <= my + 42) && (vpostx >= mx && vpostx <= mx + 128)) {
-            vpos = 0;
-            vposicony = 0;
+            if ((vposty >= my && vposty <= my + 42) && (vpostx >= mx && vpostx <= mx + 128)) {
+                vpos = 0;
+                vposicony = 0;
 
-            for(vy = 0; vy <= 1; vy++) {
-                if (vposty >= menyi[vy] && vposty <= menyf[vy]) {
-                    vposicony = menyi[vy];
-                    break;
+                for(vy = 0; vy <= 1; vy++) {
+                    if (vposty >= menyi[vy] && vposty <= menyf[vy]) {
+                        vposicony = menyi[vy];
+                        break;
+                    }
+
+                    vpos++;
                 }
 
-                vpos++;
+                if (vposicony > 0)
+                    InvertRect( mx + 4, vposicony, 120, 12);
+
+                switch (vpos) {
+                    case 0: // Format
+    /*                    strcpy(vbuf,"FORMAT\0");
+
+                        MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+
+                        processCmd();
+
+                        *vbuf = 0x00;*/
+                        break;
+                    case 1: // Help
+                        break;
+                    case 2: // About
+                        message("MGI v0.1\nGraphical Interface\n \nwww.utilityinf.com.br\0", BTCLOSE, 0);
+                        break;
+                }
             }
 
-            if (vposicony > 0)
-                InvertRect( mx + 4, vposicony, 120, 12);
+            redrawMain();
+        }
+        else {
+            for (lc = 1; lc <= 6; lc++) {
+                mx = COLMENU + (32 * lc);
+                if (vpostx >= mx && vpostx <= (mx + 24)) {
+                    InvertRect( mx, 4, 24, 24);
+                    InvertRect( mx, 4, 24, 24);
+                    break;
+                }
+            }
 
-            switch (vpos) {
-                case 0: // Format
-/*                    strcpy(vbuf,"FORMAT\0");
+            switch (lc) {
+                case 1: // RUN
+                    executeCmd();
+                    break;
+                case 2: // NEW ICON
+                    break;
+                case 3: // DEL ICON
+                    break;
+                case 4: // MMSJDOS
+                    strcpy((char *)vbuf,"MDOS\0");
 
-                    MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+                    MostraIcone(144, 104, ICON_HOURGLASS);
 
                     processCmd();
 
-                    *vbuf = 0x00;*/
+                    *vbuf = 0x00;
+
                     break;
-                case 1: // Help
+                case 5: // SETUP
                     break;
-                case 2: // About
-                    message("MGI v0.1\nGraphical Interface\n \nwww.utilityinf.com.br\0", BTCLOSE, 0);
+                case 6: // EXIT
+                    mpos = message("Deseja Sair ?\0", BTYES | BTNO, 0);
+                    if (mpos == BTYES)
+                        vresp = 0;
+                    else
+                        redrawMain();
+
                     break;
             }
+
+            if (lc < 6)
+                redrawMain();
         }
-
-        redrawMain();
-    }
-    else {
-        for (lc = 1; lc <= 6; lc++) {
-            mx = COLMENU + (32 * lc);
-            if (vpostx >= mx && vpostx <= (mx + 24)) {
-                InvertRect( mx, 4, 24, 24);
-                InvertRect( mx, 4, 24, 24);
-                break;
-            }
-        }
-
-        switch (lc) {
-            case 1: // RUN
-                executeCmd();
-                break;
-            case 2: // NEW ICON
-                break;
-            case 3: // DEL ICON
-                break;
-            case 4: // MMSJDOS
-                strcpy((char *)vbuf,"MDOS\0");
-
-                MostraIcone(144, 104, ICON_HOURGLASS);
-
-                processCmd();
-
-                *vbuf = 0x00;
-
-                break;
-            case 5: // SETUP
-                break;
-            case 6: // EXIT
-                mpos = message("Deseja Sair ?\0", BTYES | BTNO, 0);
-                if (mpos == BTYES)
-                    vresp = 0;
-                else
-                    redrawMain();
-
-                break;
-        }
-
-        if (lc < 6)
-            redrawMain();
-    }
+    #endif
 
     return vresp;
 }
@@ -3814,183 +3902,188 @@ void mgi_setup(void) {
 void executeCmd(void) {
     unsigned char vstring[64], vwb;
 
-    vstring[0] = '\0';
+    #ifdef __USE_TFT_VDG__
+        vstring[0] = '\0';
 
-    strcpy((char *)vparamstr,"Execute");
-    vparam[0] = 10;
-    vparam[1] = 40;
-    vparam[2] = 280;
-    vparam[3] = 50;
-    vparam[4] = BTOK | BTCANCEL;
-    showWindow();
+        strcpy((char *)vparamstr,"Execute");
+        vparam[0] = 10;
+        vparam[1] = 40;
+        vparam[2] = 280;
+        vparam[3] = 50;
+        vparam[4] = BTOK | BTCANCEL;
+        showWindow();
 
-    writesxy(12,55,8,"Execute:",vcorwf,vcorwb);
-    fillin(vstring, 84, 55, 160, WINDISP);
+        writesxy(12,55,8,"Execute:",vcorwf,vcorwb);
+        fillin(vstring, 84, 55, 160, WINDISP);
 
-    while (1) {
-        fillin(vstring, 84, 55, 160, WINOPER);
+        while (1) {
+            fillin(vstring, 84, 55, 160, WINOPER);
 
-        vwb = waitButton();
-
-        if (vwb == BTOK || vwb == BTCANCEL)
-            break;
-    }
-
-    if (vwb == BTOK) {
-        strcpy((char *)vbuf, (char *)vstring);
-
-        MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
-
-        // Chama processador de comandos
-        processCmd();
-
-        while (vxmaxold != 0) {
             vwb = waitButton();
 
-            if (vwb == BTCLOSE)
+            if (vwb == BTOK || vwb == BTCANCEL)
                 break;
         }
 
-        if (vxmaxold != 0) {
-            vxmax = vxmaxold;
-            vymax = vymaxold;
-            vcol = 0;
-            vlin = 0;
-            voverx = 0;
-            vovery = 0;
-            vxmaxold = 0;
-            vymaxold = 0;
-        }
+        if (vwb == BTOK) {
+            strcpy((char *)vbuf, (char *)vstring);
 
-        *vbuf = 0x00;  // Zera Buffer do teclado
-    }
+            MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+
+            // Chama processador de comandos
+            processCmd();
+
+            while (vxmaxold != 0) {
+                vwb = waitButton();
+
+                if (vwb == BTCLOSE)
+                    break;
+            }
+
+            if (vxmaxold != 0) {
+                vxmax = vxmaxold;
+                vymax = vymaxold;
+                vcol = 0;
+                vlin = 0;
+                voverx = 0;
+                vovery = 0;
+                vxmaxold = 0;
+                vymaxold = 0;
+            }
+
+            *vbuf = 0x00;  // Zera Buffer do teclado
+        }
+    #endif
 }
 
 //-------------------------------------------------------------------------
 unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
 {
-	unsigned int i, ii, iii, xi, yi, xf, xm, yf, ym, pwidth, pheight, xib, yib, xic, yic;
+	unsigned int i, ii = 0, iii, xi, yi, xf, xm, yf, ym, pwidth, pheight, xib, yib, xic, yic;
 	unsigned char qtdnl, maxlenstr;
 	unsigned char qtdcstr[8], poscstr[8], cc, dd, vbty = 0;
 	unsigned char *bstrptr;
-	qtdnl = 1;
-	maxlenstr = 0;
-	qtdcstr[1] = 0;
-	poscstr[1] = 0;
-	i = 0;
 
-    for (ii = 0; ii <= 7; ii++)
-        vbuttonwin[ii] = 0;
+    #ifdef __USE_TFT_VDG__
+    	qtdnl = 1;
+    	maxlenstr = 0;
+    	qtdcstr[1] = 0;
+    	poscstr[1] = 0;
+    	i = 0;
 
-    bstrptr = bstr;
-	while (*bstrptr)
-	{
-		qtdcstr[qtdnl]++;
+        for (ii = 0; ii <= 7; ii++)
+            vbuttonwin[ii] = 0;
 
-		if (qtdcstr[qtdnl] > 26)
-			qtdcstr[qtdnl] = 26;
+        bstrptr = bstr;
+    	while (*bstrptr)
+    	{
+    		qtdcstr[qtdnl]++;
 
-		if (qtdcstr[qtdnl] > maxlenstr)
-			maxlenstr = qtdcstr[qtdnl];
+    		if (qtdcstr[qtdnl] > 26)
+    			qtdcstr[qtdnl] = 26;
 
-		if (*bstrptr == '\n')
-		{
-			qtdcstr[qtdnl]--;
-			qtdnl++;
+    		if (qtdcstr[qtdnl] > maxlenstr)
+    			maxlenstr = qtdcstr[qtdnl];
 
-			if (qtdnl > 6)
-				qtdnl = 6;
+    		if (*bstrptr == '\n')
+    		{
+    			qtdcstr[qtdnl]--;
+    			qtdnl++;
 
-			qtdcstr[qtdnl] = 0;
-			poscstr[qtdnl] = i + 1;
-		}
+    			if (qtdnl > 6)
+    				qtdnl = 6;
 
-        bstrptr++;
-        i++;
-	}
+    			qtdcstr[qtdnl] = 0;
+    			poscstr[qtdnl] = i + 1;
+    		}
 
-	if (maxlenstr > 26)
-		maxlenstr = 26;
+            bstrptr++;
+            i++;
+    	}
 
-	if (qtdnl > 6)
-		qtdnl = 6;
+    	if (maxlenstr > 26)
+    		maxlenstr = 26;
 
-	pwidth = maxlenstr * 8;
-	pwidth = pwidth + 2;
-	xm = pwidth / 2;
-	xi = 160 - xm - 1;
-	xf = 160 + xm - 1;
+    	if (qtdnl > 6)
+    		qtdnl = 6;
 
-	pheight = 10 * qtdnl;
-	pheight = pheight + 20;
-	ym = pheight / 2;
-	yi = 120 - ym - 1;
-	yf = 120 + ym - 1;
+    	pwidth = maxlenstr * 8;
+    	pwidth = pwidth + 2;
+    	xm = pwidth / 2;
+    	xi = 160 - xm - 1;
+    	xf = 160 + xm - 1;
 
-	// Desenha Linha Fora
-    SaveScreen(xi+2,yi,pwidth,pheight);
+    	pheight = 10 * qtdnl;
+    	pheight = pheight + 20;
+    	ym = pheight / 2;
+    	yi = 120 - ym - 1;
+    	yf = 120 + ym - 1;
 
-    FillRect(xi,yi,pwidth,pheight,White);
-    vparam[0] = xi;
-    vparam[1] = yi;
-    vparam[2] = pwidth;
-    vparam[3] = pheight;
-    vparam[4] = 2;
-    vparam[5] = Black;
-	DrawRoundRect();  // rounded rectangle around text area
+    	// Desenha Linha Fora
+        SaveScreen(xi+2,yi,pwidth,pheight);
 
-	// Escreve Texto Dentro da Caixa de Mensagem
-	for (i = 1; i <= qtdnl; i++)
-	{
-		xib = xi + xm;
-		xib = xib - ((qtdcstr[i] * 8) / 2);
-		yib = yi + 2 + (10 * (i - 1));
+        FillRect(xi,yi,pwidth,pheight,White);
+        vparam[0] = xi;
+        vparam[1] = yi;
+        vparam[2] = pwidth;
+        vparam[3] = pheight;
+        vparam[4] = 2;
+        vparam[5] = Black;
+    	DrawRoundRect();  // rounded rectangle around text area
 
-        locatexy(xib, yib);
-        bstrptr = bstr + poscstr[i];
-		for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
-            writecxy(8, *bstrptr++, Black, White);
-	}
+    	// Escreve Texto Dentro da Caixa de Mensagem
+    	for (i = 1; i <= qtdnl; i++)
+    	{
+    		xib = xi + xm;
+    		xib = xib - ((qtdcstr[i] * 8) / 2);
+    		yib = yi + 2 + (10 * (i - 1));
 
-	// Desenha Botoes
-    i = 1;
-    vbbutton = bbutton;
-	while (vbbutton)
-	{
-		xib = xi + 2 + (44 * (i - 1));
-		yib = yf - 12;
-        vbty = yib;
-		i++;
+            locatexy(xib, yib);
+            bstrptr = bstr + poscstr[i];
+    		for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
+                writecxy(8, *bstrptr++, Black, White);
+    	}
 
-        drawButtons(xib, yib);
-	}
+    	// Desenha Botoes
+        i = 1;
+        vbbutton = bbutton;
+    	while (vbbutton)
+    	{
+    		xib = xi + 2 + (44 * (i - 1));
+    		yib = yf - 12;
+            vbty = yib;
+    		i++;
 
-  ii = 0;
+            drawButtons(xib, yib);
+    	}
 
-  if (!btime) {
-    while (!ii) {
-  	  VerifyTouchLcd(WHAITTOUCH);
+      ii = 0;
 
-      for (i = 1; i <= 7; i++) {
-        if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbty && vposty <= (vbty + 10)) {
-          ii = 1;
+      if (!btime) {
+        while (!ii) {
+      	  VerifyTouchLcd(WHAITTOUCH);
 
-          for (iii = 1; iii <= (i - 1); iii++)
-            ii *= 2;
+          for (i = 1; i <= 7; i++) {
+            if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbty && vposty <= (vbty + 10)) {
+              ii = 1;
 
-          break;
+              for (iii = 1; iii <= (i - 1); iii++)
+                ii *= 2;
+
+              break;
+            }
+          }
         }
       }
-    }
-  }
-  else {
-    for (dd = 0; dd <= 10; dd++)
-      for (cc = 0; cc <= btime; cc++);
-  }
+      else {
+        for (dd = 0; dd <= 10; dd++)
+          for (cc = 0; cc <= btime; cc++);
+      }
 
-  RestoreScreen(xi+2,yi,pwidth,pheight);
+      RestoreScreen(xi+2,yi,pwidth,pheight);
+    #endif
 
-  return ii;
+    return ii;
 }
 
 //-------------------------------------------------------------------------
@@ -4000,114 +4093,122 @@ void showWindow(void)
     unsigned char cc = 0, *bstr, bbutton;
     char* sqtdtam;
 
-    bstr = vparamstr;
-    x1 = vparam[0];
-    y1 = vparam[1];
-    pwidth = vparam[2];
-    pheight = vparam[3];
-    bbutton = vparam[4];
+    #ifdef __USE_TFT_VDG__
+        bstr = vparamstr;
+        x1 = vparam[0];
+        y1 = vparam[1];
+        pwidth = vparam[2];
+        pheight = vparam[3];
+        bbutton = vparam[4];
 
-    // Desenha a Janela
-	FillRect(x1, y1, pwidth, pheight, vcorwb);
-    DrawRect(x1, y1, pwidth, pheight, vcorwf);
+        // Desenha a Janela
+    	FillRect(x1, y1, pwidth, pheight, vcorwb);
+        DrawRect(x1, y1, pwidth, pheight, vcorwf);
 
-    if (*bstr) {
-        DrawRect(x1, y1, pwidth, 12, vcorwf);
-        writesxy(x1 + 2, y1 + 3,8,(char*)bstr,vcorwf,vcorwb);
-    }
+        if (*bstr) {
+            DrawRect(x1, y1, pwidth, 12, vcorwf);
+            writesxy(x1 + 2, y1 + 3,8,(char*)bstr,vcorwf,vcorwb);
+        }
 
-    i = 1;
-    for (ii = 0; ii <= 7; ii++)
-        vbuttonwin[ii] = 0;
+        i = 1;
+        for (ii = 0; ii <= 7; ii++)
+            vbuttonwin[ii] = 0;
 
-	// Desenha Botoes
-    vbbutton = bbutton;
-	while (vbbutton)
-	{
-		xib = x1 + 2 + (44 * (i - 1));
-		yib = (y1 + pheight) - 12;
-        vbuttonwiny = yib;
-		i++;
+    	// Desenha Botoes
+        vbbutton = bbutton;
+    	while (vbbutton)
+    	{
+    		xib = x1 + 2 + (44 * (i - 1));
+    		yib = (y1 + pheight) - 12;
+            vbuttonwiny = yib;
+    		i++;
 
-        drawButtons(xib, yib);
-	}
+            drawButtons(xib, yib);
+    	}
+    #endif
 }
 
 //-------------------------------------------------------------------------
 void drawButtons(unsigned int xib, unsigned int yib) {
-    // Desenha Bot?
-    vparam[0] = xib;
-    vparam[1] = yib;
-    vparam[2] = 42;
-    vparam[3] = 10;
-    vparam[4] = 1;
-    vparam[5] = Black;
-	FillRect(xib, yib, 42, 10, White);
-	DrawRoundRect();  // rounded rectangle around text area
 
-	// Escreve Texto do Bot?
-	if (vbbutton & BTOK)
-	{
-		writesxy(xib + 16 - 6, yib + 2,8,"OK",Black,White);
-        vbbutton = vbbutton & 0xFE;    // 0b11111110
-        vbuttonwin[1] = xib;
-	}
-	else if (vbbutton & BTSTART)
-	{
-		writesxy(xib + 16 - 15, yib + 2,8,"START",Black,White);
-        vbbutton = vbbutton & 0xDF;    // 0b11011111
-        vbuttonwin[6] = xib;
-	}
-	else if (vbbutton & BTCLOSE)
-	{
-		writesxy(xib + 16 - 15, yib + 2,8,"CLOSE",Black,White);
-        vbbutton = vbbutton & 0xBF;    // 0b10111111
-        vbuttonwin[7] = xib;
-	}
-	else if (vbbutton & BTCANCEL)
-	{
-		writesxy(xib + 16 - 12, yib + 2,8,"CANC",Black,White);
-        vbbutton = vbbutton & 0xFD;    // 0b11111101
-        vbuttonwin[2] = xib;
-	}
-	else if (vbbutton & BTYES)
-	{
-		writesxy(xib + 16 - 9, yib + 2,8,"YES",Black,White);
-        vbbutton = vbbutton & 0xFB;    // 0b11111011
-        vbuttonwin[3] = xib;
-	}
-	else if (vbbutton & BTNO)
-	{
-		writesxy(xib + 16 - 6, yib + 2,8,"NO",Black,White);
-        vbbutton = vbbutton & 0xF7;    // 0b11110111
-        vbuttonwin[4] = xib;
-	}
-	else if (vbbutton & BTHELP)
-	{
-		writesxy(xib + 16 - 12, yib + 2,8,"HELP",Black,White);
-        vbbutton = vbbutton & 0xEF;    // 0b11101111
-        vbuttonwin[5] = xib;
-	}
+    #ifdef __USE_TFT_VDG__
+        // Desenha Bot?
+        vparam[0] = xib;
+        vparam[1] = yib;
+        vparam[2] = 42;
+        vparam[3] = 10;
+        vparam[4] = 1;
+        vparam[5] = Black;
+    	FillRect(xib, yib, 42, 10, White);
+    	DrawRoundRect();  // rounded rectangle around text area
+
+    	// Escreve Texto do Bot?
+    	if (vbbutton & BTOK)
+    	{
+    		writesxy(xib + 16 - 6, yib + 2,8,"OK",Black,White);
+            vbbutton = vbbutton & 0xFE;    // 0b11111110
+            vbuttonwin[1] = xib;
+    	}
+    	else if (vbbutton & BTSTART)
+    	{
+    		writesxy(xib + 16 - 15, yib + 2,8,"START",Black,White);
+            vbbutton = vbbutton & 0xDF;    // 0b11011111
+            vbuttonwin[6] = xib;
+    	}
+    	else if (vbbutton & BTCLOSE)
+    	{
+    		writesxy(xib + 16 - 15, yib + 2,8,"CLOSE",Black,White);
+            vbbutton = vbbutton & 0xBF;    // 0b10111111
+            vbuttonwin[7] = xib;
+    	}
+    	else if (vbbutton & BTCANCEL)
+    	{
+    		writesxy(xib + 16 - 12, yib + 2,8,"CANC",Black,White);
+            vbbutton = vbbutton & 0xFD;    // 0b11111101
+            vbuttonwin[2] = xib;
+    	}
+    	else if (vbbutton & BTYES)
+    	{
+    		writesxy(xib + 16 - 9, yib + 2,8,"YES",Black,White);
+            vbbutton = vbbutton & 0xFB;    // 0b11111011
+            vbuttonwin[3] = xib;
+    	}
+    	else if (vbbutton & BTNO)
+    	{
+    		writesxy(xib + 16 - 6, yib + 2,8,"NO",Black,White);
+            vbbutton = vbbutton & 0xF7;    // 0b11110111
+            vbuttonwin[4] = xib;
+    	}
+    	else if (vbbutton & BTHELP)
+    	{
+    		writesxy(xib + 16 - 12, yib + 2,8,"HELP",Black,White);
+            vbbutton = vbbutton & 0xEF;    // 0b11101111
+            vbuttonwin[5] = xib;
+    	}
+    #endif
 }
 
 //-------------------------------------------------------------------------
 unsigned char waitButton(void) {
   unsigned char i, ii, iii;
-  ii = 0;
-  VerifyTouchLcd(WHAITTOUCH);
 
-  for (i = 1; i <= 7; i++) {
-    if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbuttonwiny && vposty <= (vbuttonwiny + 10)) {
-      ii = 1;
+  #ifdef __USE_TFT_VDG__
+      ii = 0;
+      VerifyTouchLcd(WHAITTOUCH);
 
-      for (iii = 1; iii <= (i - 1); iii++)
-        ii *= 2;
+      for (i = 1; i <= 7; i++) {
+        if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbuttonwiny && vposty <= (vbuttonwiny + 10)) {
+          ii = 1;
 
-      break;
-    }
-  }
+          for (iii = 1; iii <= (i - 1); iii++)
+            ii *= 2;
 
-  return ii;
+          break;
+        }
+      }
+
+      return ii;
+  #endif      
 }
 
 //-------------------------------------------------------------------------
@@ -4116,79 +4217,81 @@ void fillin(unsigned char* vvar, unsigned int x, unsigned int y, unsigned int pw
     unsigned int cc = 0;
     unsigned char cchar, *vvarptr, vdisp = 0;
 
-    vvarptr = vvar;
+    #ifdef __USE_TFT_VDG__
+        vvarptr = vvar;
 
-    while (*vvarptr) {
-        cc += 8;
-        vvarptr++;
-    }
-
-    if (vtipo == WINOPER) {
-        if (!vkeyopen && vpostx >= x && vpostx <= (x + pwidth) && vposty >= y && vposty <= (y + 10)) {
-            vkeyopen = 0x01;
-            funcKey(1,1, 0, 0,x,y+12);
+        while (*vvarptr) {
+            cc += 8;
+            vvarptr++;
         }
 
-        if (vbytetec == 0xFF) {
-            if (vkeyopen && (vpostx < x || vpostx > (x + pwidth) || vposty < y || vposty > (y + 10))) {
-                vkeyopen = 0x00;
-                funcKey(1,2, 0, 0,x,y+12);
+        if (vtipo == WINOPER) {
+            if (!vkeyopen && vpostx >= x && vpostx <= (x + pwidth) && vposty >= y && vposty <= (y + 10)) {
+                vkeyopen = 0x01;
+                funcKey(1,1, 0, 0,x,y+12);
             }
-        }
-        else {
-            if (vbytetec >= 0x20 && vbytetec <= 0x7F && (x + cc + 8) < (x + pwidth)) {
-                *vvarptr++ = vbytetec;
-                *vvarptr = 0x00;
 
-                locatexy(x+cc+2,y+2);
-                writecxy(8, vbytetec, Black, White);
-
-                vdisp = 1;
+            if (vbytetec == 0xFF) {
+                if (vkeyopen && (vpostx < x || vpostx > (x + pwidth) || vposty < y || vposty > (y + 10))) {
+                    vkeyopen = 0x00;
+                    funcKey(1,2, 0, 0,x,y+12);
+                }
             }
             else {
-                switch (vbytetec) {
-                    case 0x0D:  // Enter ou Tecla END
-                        if (vkeyopen) {
-                            vkeyopen = 0x00;
-                            funcKey(1,2, 0, 0,x,y+12);
-                        }
-                        break;
-                    case 0x08:  // BackSpace
-                        if (pposx > (x + 10)) {
-                            *vvarptr = '\0';
-                            vvarptr--;
-                            if (vvarptr < vvar)
-                                vvarptr = vvar;
-                            *vvarptr = '\0';
-                            pposx = pposx - 8;
-                            locate(vcol,vlin, NOREPOS_CURSOR);
-                            writecxy(8, 0x08, Black, White);
-                            pposx = pposx - 8;
-                        }
-                        break;
+                if (vbytetec >= 0x20 && vbytetec <= 0x7F && (x + cc + 8) < (x + pwidth)) {
+                    *vvarptr++ = vbytetec;
+                    *vvarptr = 0x00;
+
+                    locatexy(x+cc+2,y+2);
+                    writecxy(8, vbytetec, Black, White);
+
+                    vdisp = 1;
+                }
+                else {
+                    switch (vbytetec) {
+                        case 0x0D:  // Enter ou Tecla END
+                            if (vkeyopen) {
+                                vkeyopen = 0x00;
+                                funcKey(1,2, 0, 0,x,y+12);
+                            }
+                            break;
+                        case 0x08:  // BackSpace
+                            if (pposx > (x + 10)) {
+                                *vvarptr = '\0';
+                                vvarptr--;
+                                if (vvarptr < vvar)
+                                    vvarptr = vvar;
+                                *vvarptr = '\0';
+                                pposx = pposx - 8;
+                                locate(vcol,vlin, NOREPOS_CURSOR);
+                                writecxy(8, 0x08, Black, White);
+                                pposx = pposx - 8;
+                            }
+                            break;
+                    }
                 }
             }
         }
-    }
 
-    if (vtipo == WINDISP || vdisp) {
-        if (!vdisp) {
-            DrawRect(x,y,pwidth,10,Black);
-            FillRect(x+1,y+1,pwidth-2,8,White);
+        if (vtipo == WINDISP || vdisp) {
+            if (!vdisp) {
+                DrawRect(x,y,pwidth,10,Black);
+                FillRect(x+1,y+1,pwidth-2,8,White);
+            }
+
+            vvarptr = vvar;
+            locatexy(x+2,y+2);
+            while (*vvarptr) {
+                cchar = *vvarptr++;
+                cc++;
+
+                writecxy(8, cchar, Black, White);
+
+                if (pposx >= x + pwidth)
+                    break;
+            }
         }
-
-        vvarptr = vvar;
-        locatexy(x+2,y+2);
-        while (*vvarptr) {
-            cchar = *vvarptr++;
-            cc++;
-
-            writecxy(8, cchar, Black, White);
-
-            if (pposx >= x + pwidth)
-                break;
-        }
-    }
+    #endif
 }
 
 //-------------------------------------------------------------------------
@@ -4196,54 +4299,56 @@ void radioset(unsigned char* vopt, unsigned char *vvar, unsigned int x, unsigned
   unsigned char cc, xc;
   unsigned char cchar, vdisp = 0;
 
-  xc = 0;
-  cc = 0;
-  cchar = ' ';
+  #ifdef __USE_TFT_VDG__
+      xc = 0;
+      cc = 0;
+      cchar = ' ';
 
-  while(vtipo == WINOPER && cchar != '\0') {
-    cchar = vopt[cc];
-    if (cchar == ',') {
-      if (cchar == ',' && cc != 0)
-        xc++;
+      while(vtipo == WINOPER && cchar != '\0') {
+        cchar = vopt[cc];
+        if (cchar == ',') {
+          if (cchar == ',' && cc != 0)
+            xc++;
 
-      if (vpostx >= x && vpostx <= x + 8 && vposty >= (y + (xc * 10)) && vposty <= ((y + (xc * 10)) + 8)) {
-        vvar[0] = xc;
-        vdisp = 1;
+          if (vpostx >= x && vpostx <= x + 8 && vposty >= (y + (xc * 10)) && vposty <= ((y + (xc * 10)) + 8)) {
+            vvar[0] = xc;
+            vdisp = 1;
+          }
+        }
+
+        cc++;
       }
-    }
 
-    cc++;
-  }
+      xc = 0;
+      cc = 0;
 
-  xc = 0;
-  cc = 0;
+      while(vtipo == WINDISP || vdisp) {
+        cchar = vopt[cc];
 
-  while(vtipo == WINDISP || vdisp) {
-    cchar = vopt[cc];
+        if (cchar == ',') {
+          if (cchar == ',' && cc != 0)
+            xc++;
 
-    if (cchar == ',') {
-      if (cchar == ',' && cc != 0)
-        xc++;
+          FillRect(x, y + (xc * 10), 8, 8, White);
+          DrawCircle(x + 4, y + (xc * 10) + 2, 4, 0, Black);
 
-      FillRect(x, y + (xc * 10), 8, 8, White);
-      DrawCircle(x + 4, y + (xc * 10) + 2, 4, 0, Black);
+          if (vvar[0] == xc)
+            DrawCircle(x + 4, y + (xc * 10) + 2, 3, 1, Black);
+          else
+            DrawCircle(x + 4, y + (xc * 10) + 2, 3, 0, Black);
 
-      if (vvar[0] == xc)
-        DrawCircle(x + 4, y + (xc * 10) + 2, 3, 1, Black);
-      else
-        DrawCircle(x + 4, y + (xc * 10) + 2, 3, 0, Black);
+          locatexy(x + 10, y + (xc * 10));
+        }
 
-      locatexy(x + 10, y + (xc * 10));
-    }
+        if (cchar != ',' && cchar != '\0')
+          writecxy(8, cchar, Black, White);
 
-    if (cchar != ',' && cchar != '\0')
-      writecxy(8, cchar, Black, White);
+        if (cchar == '\0')
+          break;
 
-    if (cchar == '\0')
-      break;
-
-    cc++;
-  }
+        cc++;
+      }
+  #endif
 }
 
 //-------------------------------------------------------------------------
@@ -4251,36 +4356,38 @@ void togglebox(unsigned char* bstr, unsigned char *vvar, unsigned int x, unsigne
   unsigned char cc = 0;
   unsigned char cchar, vdisp = 0;
 
-  if (vtipo == WINOPER && vpostx >= x && vpostx <= x + 4 && vposty >= y && vposty <= y + 4) {
-    if (vvar[0])
-      vvar[0] = 0;
-    else
-      vvar[0] = 1;
+  #ifdef __USE_TFT_VDG__
+      if (vtipo == WINOPER && vpostx >= x && vpostx <= x + 4 && vposty >= y && vposty <= y + 4) {
+        if (vvar[0])
+          vvar[0] = 0;
+        else
+          vvar[0] = 1;
 
-    vdisp = 1;
-  }
-
-  if (vtipo == WINDISP || vdisp) {
-    FillRect(x, y + 2, 4, 4, White);
-    DrawRect(x, y + 2, 4, 4, Black);
-
-    if (vvar[0]) {
-      DrawLine(x, y + 2, x + 4, y + 6, Black);
-      DrawLine(x, y + 6, x + 4, y + 2, Black);
-    }  
-
-    if (vtipo == WINDISP) {
-      x += 6;
-      locatexy(x,y);
-      while (bstr[cc] != 0) {
-        cchar = bstr[cc];
-        cc++;
-
-        writecxy(8, cchar, Black, White);
-        x += 6;
+        vdisp = 1;
       }
-    }
-  }
+
+      if (vtipo == WINDISP || vdisp) {
+        FillRect(x, y + 2, 4, 4, White);
+        DrawRect(x, y + 2, 4, 4, Black);
+
+        if (vvar[0]) {
+          DrawLine(x, y + 2, x + 4, y + 6, Black);
+          DrawLine(x, y + 6, x + 4, y + 2, Black);
+        }  
+
+        if (vtipo == WINDISP) {
+          x += 6;
+          locatexy(x,y);
+          while (bstr[cc] != 0) {
+            cchar = bstr[cc];
+            cc++;
+
+            writecxy(8, cchar, Black, White);
+            x += 6;
+          }
+        }
+      }
+  #endif
 }
 
 

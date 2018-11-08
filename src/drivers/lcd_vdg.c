@@ -1220,9 +1220,11 @@ void ReturnKeyboard(unsigned int xposini, unsigned int yposini, unsigned int vpo
   char* sqtdtam = '\0';
 
     itoa(vpostx, sqtdtam, 10);
+    TFT_Text("       ",100,220,8,White,Blue);
     TFT_Text(sqtdtam,100,220,8,White,Blue);
     itoa(vposty, sqtdtam, 10);
-    TFT_Text(sqtdtam,200,230,8,White,Red);
+    TFT_Text("       ",200,220,8,White,Red);
+    TFT_Text(sqtdtam,200,220,8,White,Red);
 
     //--- VERIFICA A POSIÇÃO PRESSIONADA
     if (vposty >= yposini && vposty <= (yposini + 17)) {    
