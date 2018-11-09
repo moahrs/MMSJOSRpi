@@ -8,7 +8,7 @@ typedef struct divmod_result {
     uint32_t mod;
 } divmod_t;
 
-divmod_t divmod(uint32_t dividend, uint32_t divisor);
+extern divmod_t divmod(uint32_t dividend, uint32_t divisor);
 extern uint32_t div(uint32_t dividend, uint32_t divisor);
 extern void * memset ( void * ptr, int value, int num );
 extern void memcpy(void * dest, void * src, int bytes);

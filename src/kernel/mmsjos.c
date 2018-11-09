@@ -7,13 +7,12 @@
 * Data        Versão  Responsavel  Motivo
 * 02/11/2018  0.1     Moacir Jr.   Criação Versão Beta
 *--------------------------------------------------------------------------------
-*
+* ---------------
 * Mapa de Memoria
 * ---------------
 *
-* +-------------+ 000000h
-* |   SDRAM     |
-* |   512MB     |
+*   SDRAM 512MB
+* +-------------+ 40000000h
 * |             |
 * |             |
 * |             |
@@ -23,7 +22,24 @@
 * |             |
 * |             |
 * |             |
-* +-------------+ FFFFFFh 
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* +-------------+ 5F800000h
+* |             |
+* | SISTEMA 4MB | 
+* |             | 5FBFFFFFh
+* +-------------+ 5FC00000h
+* |             |
+* | VIDEO   4MB | 
+* |             |
+* +-------------+ 5FFFFFFFh 
+*
 *--------------------------------------------------------------------------------
 *
 * Endereços de Perifericos
@@ -85,7 +101,6 @@ int __locale_ctype_ptr(int return_value)
     return 0;
 }   
 
-
 //-----------------------------------------------------------------------------
 // Principal
 //-----------------------------------------------------------------------------
@@ -98,7 +113,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     bcm2835_init();
 
-//    mem_init((atag_t *)atags);
+    mem_init((atag_t *)atags);
 
     interrupts_init();
 
@@ -116,7 +131,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     unsigned int vbytepic = 0, vbytevdg;
     unsigned int ix = 0, vvcol = 0;
-    unsigned char *vbufptr = (unsigned char*)vbuf;
+    unsigned char *vbufptr;
     char *sqtdtam;
     unsigned char vret;
 
@@ -126,6 +141,8 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vbufkptr = &arrvbufkptr;
     vbuf = &arrvbuf;
     mcfgfile = &arrmcfgfile;
+    vbufptr = vbuf;
+    *vbufptr = 0x00;
 
     voutput = 0x01; // Indica Padrão Inicial Video TEXTO = 1, MGI = 2
     voverx = 0;   // Indica sem overlay, usando tela de texto.
@@ -167,7 +184,6 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     writes("Running MMSJ-OS version 0.1\n\0", vcorf, vcorb);
     writes(" Raspberry PI Zero W v1.1 at 1Ghz.\n\0", vcorf, vcorb);
-
     writes(" Total Memory Found \0", vcorf, vcorb);
     vbytepic = vtotmem;
     itoa(vbytepic, sqtdtam, 10);
@@ -244,7 +260,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
                         case 0x0D:  // Enter
                             vlin = vlin + 1;
                             locate(0, vlin, NOREPOS_CURSOR);
-                            vbufptr = 0x00;
+                            *vbufptr = 0x00;
                             funcKey(0,2, 0, 0, 50, 0);
                             processCmd();
                             putPrompt(noaddline);
@@ -413,24 +429,8 @@ void processCmd(void) {
                 startMGI();
         }
         else if (!strcmp(linhacomando,"VER") && iy == 3) {
-            writes("MMSJ-OS v1.3\n\0", vcorf, vcorb);
+            writes("MMSJ-OS v0.1\n\0", vcorf, vcorb);
         }
-/*        else if (!strcmp(linhacomando,"INTEI") && iy == 5) {
-            vpicret = 1;
-            sendPic(0x02);
-            sendPic(0xE9);
-            sendPic(0x01);
-            *inten = 1;
-            writes("Interrupt Enabled.\n\0", vcorf, vcorb);
-        }
-        else if (!strcmp(linhacomando,"INTDI") && iy == 5) {
-            vpicret = 1;
-            sendPic(0x02);
-            sendPic(0xE9);
-            sendPic(0x00);
-            *inten = 0;
-            writes("Interrupt Disabled.\n\0", vcorf, vcorb);
-        }*/
         else if (!strcmp(linhacomando,"LS") && iy == 2) {
             if (fsFindInDir(NULL, TYPE_FIRST_ENTRY) >= ERRO_D_START) {
                 writes("File not found\n\0", vcorf, vcorb);
@@ -696,9 +696,9 @@ void processCmd(void) {
                 vpicret = 1;
                 /* ver como pegar */
             }
-            else if (!strcmp(linhacomando,"FORMAT") && iy == 6) {
+/*            else if (!strcmp(linhacomando,"FORMAT") && iy == 6) {
                 vretfat = fsFormat(0x5678, linhaarg);
-            }
+            }*/
             else if (!strcmp(linhacomando,"LOADCFG") && iy == 7) {
                 loadCFG(1);
                 ix = 255;
@@ -724,10 +724,10 @@ void processCmd(void) {
                 ix++;
                 linhacomando[ix] = '\0';
 
-                vretfat = fsFindInDir(linhacomando, TYPE_FILE);
+                vretfat = ERRO_D_NOT_FOUND /*fsFindInDir(linhacomando, TYPE_FILE)*/ ;
                 if (vretfat <= ERRO_D_START) {
                     // Se tiver, carrega em 0x00810000 e executa
-                    loadFile((unsigned char*)linhacomando, (unsigned short*)0x00810000);
+                    loadFile((unsigned char*)linhacomando, (unsigned short*)0x5F800000);
                     if (!verro)
                         runCmd();
                     else {
@@ -835,13 +835,13 @@ void processCmd(void) {
                             writes("\n\0", vcorf, vcorb);
                         }
                     }
-                    else if (!strcmp(linhacomando,"FORMAT")) {
+/*                    else if (!strcmp(linhacomando,"FORMAT")) {
                         if (voutput == 1)
                             writes("Format disk was successfully\n\0", vcorf, vcorb);
                         else {
                             message("Format disk was successfully\0", BTCLOSE, 0);
                         }
-                    }
+                    }*/
                 }
             }
         }
@@ -900,6 +900,12 @@ void verifyMGI(void) {
         vparam[4] = BTCLOSE;
         showWindow();
     }
+}
+
+//-----------------------------------------------------------------------------
+void writechar(int c, void *stream)
+{
+    writec((char*)c, vcorf, vcorb, ADD_POS_SCR);
 }
 
 //-----------------------------------------------------------------------------
@@ -1002,25 +1008,38 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
             xbcolor = vcorwb;
         }
 
-        paramVDG[0] = 0x0B;
-        paramVDG[1] = 0xD2;
-        paramVDG[2] = ((vcol * 8) + voverx) >> 8;
-        paramVDG[3] = (vcol * 8) + voverx;
-        paramVDG[4] = ((vlin * 10) + vovery) >> 8;
-        paramVDG[5] = (vlin * 10) + vovery;
-        paramVDG[6] = 8;
-        paramVDG[7] = xcolor >> 8;
-        paramVDG[8] = xcolor;
-        paramVDG[9] = xbcolor >> 8;
-        paramVDG[10] = xbcolor;
-        paramVDG[11] = pbyte;
-        commVDG(paramVDG);
+        if (pbyte != '\n')
+        {
+            paramVDG[0] = 0x0B;
+            paramVDG[1] = 0xD2;
+            paramVDG[2] = ((vcol * 8) + voverx) >> 8;
+            paramVDG[3] = (vcol * 8) + voverx;
+            paramVDG[4] = ((vlin * 10) + vovery) >> 8;
+            paramVDG[5] = (vlin * 10) + vovery;
+            paramVDG[6] = 8;
+            paramVDG[7] = xcolor >> 8;
+            paramVDG[8] = xcolor;
+            paramVDG[9] = xbcolor >> 8;
+            paramVDG[10] = xbcolor;
+            paramVDG[11] = pbyte;
+            commVDG(paramVDG);
 
-        if (ptipo == ADD_POS_SCR) {
-            vcol = vcol + 1;
+            if (ptipo == ADD_POS_SCR) {
+                vcol = vcol + 1;
 
-            if ((vlin == (vymax - 1)) && (vcol == vxmax))
-                vcol = vxmax - 1;
+                if ((vlin == (vymax - 1)) && (vcol == vxmax))
+                    vcol = vxmax - 1;
+
+                locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
+            }
+        }
+        else
+        {
+            vlin++;
+            vcol = 1;
+
+            if (vlin == (vymax + 1))
+                vlin = vymax;
 
             locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
         }

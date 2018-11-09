@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <common/stdlib.h>
 #include <limits.h>
 

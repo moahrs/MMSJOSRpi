@@ -251,8 +251,12 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
         }
         screenPtr->x = dfx;
 
-/*        dfy = (double)screenPtr->y;
-        dfy = dfy * 0.5334f;
+/*        dfx = (double)screenPtr->x;
+        dfx = dfx / 1.375f;
+        screenPtr->x = (int)dfx;
+
+        dfy = (double)screenPtr->y;
+        dfy = dfy / 1.958f;
         screenPtr->y = (int)dfy;*/
 
         return 1;

@@ -1,10 +1,11 @@
 # Don't use normal gcc, use the arm cross compiler
-CC = arm-none-eabi-gcc
+PREFIX = arm-none-eabi-
+CC = $(PREFIX)gcc
 OBJCOPY = arm-none-eabi-objcopy
 
 CFLAGS= -march=armv6zk -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -fpic -ffreestanding
 CSRCFLAGS= -O2 -Wall -Wextra
-LFLAGS= -ffreestanding -O2 -nostdlib
+LFLAGS= -ffreestanding -O2 -nostdlib -lgcc
 
 # Location of the files
 KER_SRC = ../src/kernel
@@ -25,6 +26,7 @@ HEADERS = $(wildcard $(KER_HEAD)/*.h)
 IMG_NAME=mmsjos
 
 build-hardware: build
+	$(PREFIX)objdump -D $(IMG_NAME).elf > $(IMG_NAME).lst
 	$(OBJCOPY) $(IMG_NAME).elf -O binary kernel.img
 
 build: $(OBJECTS) $(HEADERS)

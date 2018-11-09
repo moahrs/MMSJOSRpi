@@ -362,11 +362,13 @@ void Write_Command(unsigned int wcommand)
 //-------------------------------------------------------------------
 void Write_Data(unsigned int wdata)
 {
+    *(pBaseVideoMem + pBaseVideoAddr) = wdata;
+
   	bcm2835_gpio_write(TFT_RD,1);
   	bcm2835_gpio_write(TFT_DC,1);
   	Write_Bytes_GPIO(wdata);
   	bcm2835_gpio_write(TFT_WR,0);
-  	Delayns(35);
+  	Delayns(35); 
   	bcm2835_gpio_write(TFT_WR,1);
 }
 
@@ -380,17 +382,20 @@ unsigned int Read_Data(void) {
 void Write_Command_Data(unsigned int wcommand,unsigned int Wdata)
 {
    Write_Command(wcommand);
+   pBaseVideoAddr = 0x3FFFFF;
    Write_Data(Wdata);
 }
 
 //-------------------------------------------------------------------
 void TFT_Set_Address(unsigned int PX1,unsigned int PY1,unsigned int PX2,unsigned int PY2)
 {
-    Write_Command_Data(0x44,(PX2 << 8) + PX1 );  //Column address start2
-    Write_Command_Data(0x45,PY1);      //Column address start1
-    Write_Command_Data(0x46,PY2);  //Column address end2
-    Write_Command_Data(0x4E,PX1);      //Column address end1
-    Write_Command_Data(0x4F,PY1);  //Row address start2
+    pBaseVideoAddr = (PY1 << 8) + PX1;
+
+    Write_Command_Data(0x44,(PX2 << 8) + PX1 );   //Column address start2
+    Write_Command_Data(0x45,PY1);                 //Column address start1
+    Write_Command_Data(0x46,PY2);                 //Column address end2
+    Write_Command_Data(0x4E,PX1);                 //Column address end1
+    Write_Command_Data(0x4F,PY1);                 //Row address start2
     Write_Command(0x22);
 }
 
@@ -551,6 +556,7 @@ void TFT_Fill(unsigned int color)
   {
     for(j = 0; j <= x_max; j++)
     {
+      pBaseVideoAddr = (i << 8) + j;
 	  	bcm2835_gpio_write(TFT_WR,0);
 	  	Delayns(70);
 	  	bcm2835_gpio_write(TFT_WR,1);
@@ -570,6 +576,7 @@ void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,uns
   {
     for(j = X1; j <= X2; j++)
     {
+      pBaseVideoAddr = (i << 8) + j;
 	  	bcm2835_gpio_write(TFT_WR,0);
 	  	Delayns(70);
 	  	bcm2835_gpio_write(TFT_WR,1);
@@ -737,7 +744,7 @@ void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fco
 	
 	if(DimFont == 8)
 	{
-		 uuc = C;
+		   uuc = C;
 	     Cint = uuc;
 	     CPtrFont = (Cint - 32) * 8;
 	     PtrFont = FONT_8x8 + CPtrFont;
@@ -746,7 +753,7 @@ void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fco
 	         font8x8[k] = *PtrFont++;
 	     }
    
-         bcm2835_gpio_write(TFT_CS,0);
+       bcm2835_gpio_write(TFT_CS,0);
 	     TFT_Set_Address(x,y,x+7,y+7);
 	     for(i = 0; i <= 7; i++)
 	     {
@@ -756,55 +763,62 @@ void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fco
 	          print2 = print1 >>7;
 	          if(print2 == 1)
 	          {
+               pBaseVideoAddr = ((y + i) << 8) + (x + k);
 	             Write_Data(Fcolor);
 	          }
 	          else
 	          {
+               pBaseVideoAddr = ((y + i) << 8) + (x + k);
 	             Write_Data(Bcolor);
 	          }
 	          font8x8[i] = font8x8[i] << 1;
 	       }
 	     }
 
-         bcm2835_gpio_write(TFT_CS,1);
+       bcm2835_gpio_write(TFT_CS,1);
 	}
 	
 	else if(DimFont == 16)
 	{
-		 uuc = C;
+		   uuc = C;
 	     Cint = uuc;
-         CPtrFont = (Cint - 32) * 32;
+       CPtrFont = (Cint - 32) * 32;
 	     PtrFont = FONT_16X16 + CPtrFont;
 	
 	     for(k = 0; k <= 15; k++)
 	     {
-	      font16X16[k] = *PtrFont++;
-	      font16X16[k] = (font16X16[k] << 8);
-	      font16X16[k] = font16X16[k] + *PtrFont++;
+	       font16X16[k] = *PtrFont++;
+	       font16X16[k] = (font16X16[k] << 8);
+	       font16X16[k] = font16X16[k] + *PtrFont++;
 	     }
 	
-         bcm2835_gpio_write(TFT_CS,0);
+       bcm2835_gpio_write(TFT_CS,0);
+
 	     TFT_Set_Address(x,y,x+15,y+15);
-	     for(i = 0; i <= 15; i++)
+	     
+       for(i = 0; i <= 15; i++)
 	     {
 	       for(k = 0; k <= 15; k++)
 	       {
-	        print3 = (font16X16[i] & 0x8000);
-	        print4 = print3 >>15;
+	         print3 = (font16X16[i] & 0x8000);
+	         print4 = print3 >>15;
 	
-	        if(print4 == 1)
-	        {
-	           Write_Data(Fcolor);
-	        }
-	        else
-	        {
-	           Write_Data(Bcolor);
-	        }
+	         if(print4 == 1)
+	         {
+              pBaseVideoAddr = ((y + i) << 8) + (x + k);
+	            Write_Data(Fcolor);
+	         }
+	         else
+	         {
+              pBaseVideoAddr = ((y + i) << 8) + (x + k);
+	            Write_Data(Bcolor);
+	         }
 	
-	        font16X16[i] = font16X16[i] << 1;
+	         font16X16[i] = font16X16[i] << 1;
 	       }
 	     }
-         bcm2835_gpio_write(TFT_CS,0);
+
+       bcm2835_gpio_write(TFT_CS,0);
 	}
 }
 
@@ -829,6 +843,7 @@ void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned
     TFT_Set_Address(pos_x, pos_y, pos_x + dim_y - 1, pos_y + dim_x - 1);
     for(y = pos_y; y < (pos_y + dim_x); y++ ) {
 	    for(x = pos_x; x < (pos_x + dim_y); x++ ) {
+            pBaseVideoAddr = (y << 8) + x;
             Write_Data(*picture++);
         }
     }
@@ -877,8 +892,9 @@ void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,uns
 }
 
 //-------------------------------------------------------------------
-void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo) {
-/*    unsigned int iy,xo,xd,xf,yf;
+void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo) 
+{
+    unsigned int iy,xo,xd,xf,yf;
 
     xd = 0;
     xo = qtdlin;
@@ -886,178 +902,59 @@ void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo) {
     xf = x_max;
 
     for (ix = xo; ix <= xf; ix++) {
-	    TFT_Set_Address(ix,0,ix,yf);
+  	    for (iy = 0; iy <= yf; iy++) {
+            pvideo[iy] = *(pBaseVideoMem + (ix << 8) + iy);
+  	    }
 
-	    TFT_DP_Lo0_Direction = 0xFF;
-	    TFT_DP_Lo1_Direction = 0xFF;
-	    TFT_DP_Lo_Direction = 0xFF;
-	    TFT_DP_Hi_Direction = 0xFF;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
-        // dummy read
-        Read_Data();	
-
-        // real read
-	    for (iy = 0; iy <= yf; iy++) {
-	        pvideo[iy] = Read_Data();
-	    }
-
-        // write in the new position
-	    TFT_DP_Lo0_Direction = 0x00;
-	    TFT_DP_Lo1_Direction = 0x00;
-	    TFT_DP_Lo_Direction = 0x00;
-	    TFT_DP_Hi_Direction = 0x00;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
-        xd = ix - qtdlin;
-	    TFT_Set_Address(xd,0,xd,yf);
-	    for (iy = 0; iy <= yf; iy++) {
-	        Write_Data(pvideo[iy]);
-	    }
+	      TFT_Set_Address(xd,0,xd,yf);
+  	    for (iy = 0; iy <= yf; iy++) {
+            pBaseVideoAddr = (ix << 8) + iy;
+  	        Write_Data(pvideo[iy]);
+  	    }
     }
 
-    xd++;*/
+    xd++;
 }
 
 //-------------------------------------------------------------------
-void TFT_SaveScreen(unsigned int paddress, unsigned int x, unsigned int y, unsigned int width, unsigned int height) {
-/*	unsigned char temp;
-	unsigned char memMSB, memLSB, ymod8;
-	unsigned int data, vxxw, vyyw, color;
-	
-    vxxw = y + height;
-    vyyw = x + width;
-
-	memMSB = ((paddress >> 8) & 0x00FF);
-	memLSB = (paddress & 0x00FF);
-
-//	Init_SPI();
-
-	spi_man_init();
-
-    SRAMWriteStatusReg(Seq_Mode);					//Configure the SRAM in Sequential Mode
-    SRAMReadStatusReg();								
-
-	spi_man8_send(Write);
-	spi_man8_send(memMSB);
-	spi_man8_send(memLSB);
-
-//	SSPBUF = Write;   								//Write to commad to SR
-//	while(!SSPSTATbits.BF);										// Check for the BF flag to ensure trasmission
-//	temp = SSPBUF;									//Clear the BF flag
-//	
-//	SSPBUF = memMSB;   								//High Address byte of the SRAM
-//	while(!SSPSTATbits.BF);										// Check for the BF flag to ensure trasmission
-//	temp = SSPBUF;									//Clear the BF flag
-//	
-//	SSPBUF = memLSB;   								//Low Address byte of the SRAM
-//	while(!SSPSTATbits.BF);										//Check for the BF flag to ensure trasmission
-//	temp = SSPBUF;									//Clear the BF flag
-
-
-    for (ix = y; ix <= vxxw; ix++) {
-	    TFT_Set_Address(ix,x,ix,vyyw);
-
-	    TFT_DP_Lo0_Direction = 0xFF;
-	    TFT_DP_Lo1_Direction = 0xFF;
-	    TFT_DP_Lo_Direction = 0xFF;
-	    TFT_DP_Hi_Direction = 0xFF;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
-        // dummy read
-        Read_Data();	
-
-        // real read
-	    for (iy = x; iy <= vyyw; iy++) {
-	        pvideo[iy] = Read_Data();
-	    }
-
-        // write in the new position
-	    TFT_DP_Lo0_Direction = 0x00;
-	    TFT_DP_Lo1_Direction = 0x00;
-	    TFT_DP_Lo_Direction = 0x00;
-	    TFT_DP_Hi_Direction = 0x00;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
-	    for (iy = x; iy <= vyyw; iy++) {
-			temp = ((pvideo[iy] >> 8) & 0x00FF);
-			spi_man8_send(temp);
-		
-//			SSPBUF = temp;   						//Write to the SRAM
-//			while(!SSPSTATbits.BF);					        	//Check for the BF flag to ensure trasmission
-//			temp = SSPBUF;							//Clear the BF flag
-
-			temp = (pvideo[iy] & 0x00FF);
-			spi_man8_send(temp);
-
-//			SSPBUF = temp;   						//Write to the SRAM
-//			while(!SSPSTATbits.BF);					        	//Check for the BF flag to ensure trasmission
-//			temp = SSPBUF;							//Clear the BF flag
-	    }
-    }*/
-}
-
-//-------------------------------------------------------------------
-void TFT_RestoreScreen(unsigned int paddress, unsigned int x, unsigned int y, unsigned int width, unsigned int height) {
-/*	unsigned int temp, data, vxxw, vyyw, ijj;
-	unsigned char memMSB, memLSB, ymod8;
+void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
+{
+    unsigned int temp;
+    unsigned int vxxw, vyyw;
+    unsigned int *paddress;
 
     vxxw = y + height;
     vyyw = x + width;
 
-	memMSB = ((paddress >> 8) & 0x00FF);
-	memLSB = (paddress & 0x00FF);
-
-//	Init_SPI();
-
-	spi_man_init();
-
-    SRAMWriteStatusReg(Seq_Mode);					//Configure the SRAM in Sequential Mode
-    SRAMReadStatusReg();								
-
-	spi_man8_send(Read);
-	spi_man8_send(memMSB);
-	spi_man8_send(memLSB);
-
-//	SSPBUF = Read;   								//Write to commad to SR
-//	while(!SSPSTATbits.BF);										// Check for the BF flag to ensure trasmission
-//	temp = SSPBUF;									//Clear the BF flag
-//	
-//	SSPBUF = memMSB;   								//High Address byte of the SRAM
-//	while(!SSPSTATbits.BF);										// Check for the BF flag to ensure trasmission
-//	temp = SSPBUF;									//Clear the BF flag
-//	
-//	SSPBUF = memLSB;   								//Low Address byte of the SRAM
-//	while(!SSPSTATbits.BF);										//Check for the BF flag to ensure trasmission
-//	temp = SSPBUF; 		
+    paddress = (unsigned int*)pBaseVideoMem + (pPos * 0x28000);    
 
     for (ix = y; ix <= vxxw; ix++) {
-	    TFT_Set_Address(ix,x,ix,vyyw);
+  	    for (iy = x; iy <= vyyw; iy++) {
+            temp = *(pBaseVideoMem + (ix << 8) + iy);
+            *(paddress + (ix << 8) + iy) = temp;
+  	    }
+    }
+}
 
-	    for (iy = x; iy <= vyyw; iy++) {
-//			SSPBUF = 0xFF;   		   			 	//Dummy write operation to SSPBUF read from SRAM
-//			while(!SSPSTATbits.BF);			    		 		//Check for the BF flag to verify data reception
-//			temp = SSPBUF;	     					//Store the data in the data memory of the controller
+//-------------------------------------------------------------------
+void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
+{
+    unsigned int data, vxxw, vyyw;
+    unsigned int *paddress;
 
-			temp = spi_man8_get();
+    vxxw = y + height;
+    vyyw = x + width;
 
-			data = ((temp << 8) & 0xFF00);			
+    paddress = (unsigned int*)(pBaseVideoMem + (pPos * 0x28000));    
 
-//			SSPBUF = 0xFF;   		   			 	//Dummy write operation to SSPBUF read from SRAM
-//			while(!SSPSTATbits.BF);			    		 		//Check for the BF flag to verify data reception
-//			temp = SSPBUF;	     					//Store the data in the data memory of the controller
-
-			temp = spi_man8_get();
-
-			data = data | (temp & 0x00FF);			
-
-			Write_Data(data);
-	    }
-	}*/
+    for (ix = y; ix <= vxxw; ix++) {
+        TFT_Set_Address(ix,x,ix,vyyw);
+        for (iy = x; iy <= vyyw; iy++) {
+            data = *(paddress + (ix << 8) + iy);
+            pBaseVideoAddr = (ix << 8) + iy;
+            Write_Data(data);
+        }
+    }
 }
 
 //-------------------------------------------------------------------
