@@ -4,6 +4,7 @@
 #include <kernel/mmsjos.h>
 #include <kernel/mmsjos_api.h>
 #include <drivers/lcd_vdg_api.h>
+#include "common/mylib.h"
 
 static interrupt_registers_t * interrupt_regs;
 

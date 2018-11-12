@@ -6,6 +6,7 @@
 #include <drivers/lcd_vdg_api.h>
 #include <drivers/lcd_vdg_fontes.h>  
 #include <kernel/interrupts.h>
+#include "common/mylib.h"
 
 static void lcd_tch_irq_handler(void) {
     if (irqTchOn)
@@ -119,7 +120,7 @@ int commVDG(unsigned char *vparam)
 		    pconv1 = *(vparam + 3);
         pconv2 = *(vparam + 4);
 		    bcor = ((pconv1 << 8) & 0xFF00) | (pconv2 & 0x00FF);
-        TFT_Scroll(*(vparam + 2),1);
+        TFT_Scroll(*(vparam + 2));
         break;
     case 0xDB: // Ativar ou Desativa o Teclado e caso seja ativar, já deixa para re-ativar on Touch.
         if (*(vparam + 6) == 0x01) {
@@ -188,12 +189,12 @@ int commVDG(unsigned char *vparam)
         TFT_Image(vxx, vyy, vxxf, vyyf, (unsigned int*)pvideo);
         break;
 		case 0xEA:
-        // vxxf e vyyf vao funcionar como width e height respectivamente
-        TFT_SaveScreen(0x0000, vxx, vyy, vxxf, vyyf);
+        // vxxf e vyyf vao funcionar como width e height respectivamente, e fcorgraf como page
+        TFT_SaveScreen(fcorgraf, vxx, vyy, vxxf, vyyf);
         break;
 		case 0xEB:
         // vxxf e vyyf vao funcionar como width e height respectivamente
-        TFT_RestoreScreen(0x0000, vxx, vyy, vxxf, vyyf);
+        TFT_RestoreScreen(fcorgraf, vxx, vyy, vxxf, vyyf);
         break;
 		case 0xEC:
         // vxxf e vyyf vao funcionar como dim_x e dim_y respectivamente
@@ -362,10 +363,13 @@ void Write_Command(unsigned int wcommand)
 //-------------------------------------------------------------------
 void Write_Data(unsigned int wdata)
 {
-    *(pBaseVideoMem + pBaseVideoAddr) = wdata;
+    if (pBaseVideoAddrX <= 319 && pBaseVideoAddrY <= 239) 
+    {
+        pBaseVideoMem[0][pBaseVideoAddrX][pBaseVideoAddrY] = wdata;
+    }
 
   	bcm2835_gpio_write(TFT_RD,1);
-  	bcm2835_gpio_write(TFT_DC,1);
+  	bcm2835_gpio_write(TFT_DC,1); 
   	Write_Bytes_GPIO(wdata);
   	bcm2835_gpio_write(TFT_WR,0);
   	Delayns(35); 
@@ -382,14 +386,16 @@ unsigned int Read_Data(void) {
 void Write_Command_Data(unsigned int wcommand,unsigned int Wdata)
 {
    Write_Command(wcommand);
-   pBaseVideoAddr = 0x3FFFFF;
+   pBaseVideoAddrX = 320;
+   pBaseVideoAddrY = 240;
    Write_Data(Wdata);
 }
 
 //-------------------------------------------------------------------
 void TFT_Set_Address(unsigned int PX1,unsigned int PY1,unsigned int PX2,unsigned int PY2)
 {
-    pBaseVideoAddr = (PY1 << 8) + PX1;
+    pBaseVideoAddrX = PY1;
+    pBaseVideoAddrY = PX1;
 
     Write_Command_Data(0x44,(PX2 << 8) + PX1 );   //Column address start2
     Write_Command_Data(0x45,PY1);                 //Column address start1
@@ -397,6 +403,11 @@ void TFT_Set_Address(unsigned int PX1,unsigned int PY1,unsigned int PX2,unsigned
     Write_Command_Data(0x4E,PX1);                 //Column address end1
     Write_Command_Data(0x4F,PY1);                 //Row address start2
     Write_Command(0x22);
+}
+
+void TFT_EN_INT(void)
+{
+    register_irq_handler(GPIO_INT0, lcd_tch_irq_handler, lcd_tch_irq_clearer);
 }
 
 //-------------------------------------------------------------------
@@ -419,8 +430,6 @@ void TFT_Init(void)
     bcm2835_gpio_fsel(TFT_IRQ_TCH, BCM2835_GPIO_FSEL_INPT);     
     bcm2835_gpio_fen(TFT_IRQ_TCH);
     
-    register_irq_handler(GPIO_INT0, lcd_tch_irq_handler, lcd_tch_irq_clearer);
-
   	bcm2835_gpio_write(TFT_DC,1);
   	bcm2835_gpio_write(TFT_CS,1);
   	bcm2835_gpio_write(TFT_RD,1);
@@ -556,7 +565,7 @@ void TFT_Fill(unsigned int color)
   {
     for(j = 0; j <= x_max; j++)
     {
-      pBaseVideoAddr = (i << 8) + j;
+      pBaseVideoMem[0][i][j] = color;
 	  	bcm2835_gpio_write(TFT_WR,0);
 	  	Delayns(70);
 	  	bcm2835_gpio_write(TFT_WR,1);
@@ -576,7 +585,7 @@ void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,uns
   {
     for(j = X1; j <= X2; j++)
     {
-      pBaseVideoAddr = (i << 8) + j;
+      pBaseVideoMem[0][i][j] = color;
 	  	bcm2835_gpio_write(TFT_WR,0);
 	  	Delayns(70);
 	  	bcm2835_gpio_write(TFT_WR,1);
@@ -597,7 +606,7 @@ void TFT_Dot(unsigned int x,unsigned int y,unsigned int color)
 //-------------------------------------------------------------------
 void TFT_Line(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color)
 {
-int x,y,addx,addy,dx,dy;
+unsigned int x,y,addx,addy,dx,dy;
 long P;
 unsigned int i;
 
@@ -763,12 +772,14 @@ void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fco
 	          print2 = print1 >>7;
 	          if(print2 == 1)
 	          {
-               pBaseVideoAddr = ((y + i) << 8) + (x + k);
+               pBaseVideoAddrY = (x + i);
+               pBaseVideoAddrX = (y + k);
 	             Write_Data(Fcolor);
 	          }
 	          else
 	          {
-               pBaseVideoAddr = ((y + i) << 8) + (x + k);
+               pBaseVideoAddrY = (x + i);
+               pBaseVideoAddrX = (y + k);
 	             Write_Data(Bcolor);
 	          }
 	          font8x8[i] = font8x8[i] << 1;
@@ -805,12 +816,14 @@ void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fco
 	
 	         if(print4 == 1)
 	         {
-              pBaseVideoAddr = ((y + i) << 8) + (x + k);
+              pBaseVideoAddrY = (x + i);
+              pBaseVideoAddrX = (y + k);
 	            Write_Data(Fcolor);
 	         }
 	         else
 	         {
-              pBaseVideoAddr = ((y + i) << 8) + (x + k);
+              pBaseVideoAddrY = (x + i);
+              pBaseVideoAddrX = (y + k);
 	            Write_Data(Bcolor);
 	         }
 	
@@ -843,7 +856,8 @@ void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned
     TFT_Set_Address(pos_x, pos_y, pos_x + dim_y - 1, pos_y + dim_x - 1);
     for(y = pos_y; y < (pos_y + dim_x); y++ ) {
 	    for(x = pos_x; x < (pos_x + dim_y); x++ ) {
-            pBaseVideoAddr = (y << 8) + x;
+            pBaseVideoAddrX = x;
+            pBaseVideoAddrY = y;
             Write_Data(*picture++);
         }
     }
@@ -892,7 +906,7 @@ void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,uns
 }
 
 //-------------------------------------------------------------------
-void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo) 
+void TFT_Scroll(unsigned char qtdlin) 
 {
     unsigned int iy,xo,xd,xf,yf;
 
@@ -901,60 +915,79 @@ void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo)
     yf = y_max;
     xf = x_max;
 
-    for (ix = xo; ix <= xf; ix++) {
-  	    for (iy = 0; iy <= yf; iy++) {
-            pvideo[iy] = *(pBaseVideoMem + (ix << 8) + iy);
+    bcm2835_gpio_write(TFT_CS,0);
+
+    for (ix = xo; ix <= xf; ix++) 
+    {
+  	    for (iy = 0; iy <= yf; iy++) 
+        {
+            pvideo[iy] = pBaseVideoMem[0][iy][ix];
   	    }
 
+        xd = ix - qtdlin;
 	      TFT_Set_Address(xd,0,xd,yf);
-  	    for (iy = 0; iy <= yf; iy++) {
-            pBaseVideoAddr = (ix << 8) + iy;
+  	    for (iy = 0; iy <= yf; iy++) 
+        {
+            pBaseVideoAddrX = iy;
+            pBaseVideoAddrY = xd;
   	        Write_Data(pvideo[iy]);
   	    }
     }
 
     xd++;
+    TFT_Box(xd,0,xf,yf,bcor);
+
+    bcm2835_gpio_write(TFT_CS,1);
 }
 
+//-------------------------------------------------------------------
+// 11 Paginas disponiveis, usaveis de 1 a 10
+// Pagina 0 é a que esta sendo mostrada na tela
 //-------------------------------------------------------------------
 void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
 {
     unsigned int temp;
     unsigned int vxxw, vyyw;
-    unsigned int *paddress;
 
     vxxw = y + height;
     vyyw = x + width;
 
-    paddress = (unsigned int*)pBaseVideoMem + (pPos * 0x28000);    
-
-    for (ix = y; ix <= vxxw; ix++) {
-  	    for (iy = x; iy <= vyyw; iy++) {
-            temp = *(pBaseVideoMem + (ix << 8) + iy);
-            *(paddress + (ix << 8) + iy) = temp;
+    for (ix = y; ix <= vxxw; ix++) 
+    {
+  	    for (iy = x; iy <= vyyw; iy++) 
+        {
+            temp = pBaseVideoMem[0][iy][ix];
+            pBaseVideoMem[pPos][iy][ix] = temp;
   	    }
     }
 }
 
 //-------------------------------------------------------------------
+// 11 Paginas disponiveis, usaveis de 1 a 10
+// Pagina 0 é a que esta sendo mostrada na tela
+//-------------------------------------------------------------------
 void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
 {
     unsigned int data, vxxw, vyyw;
-    unsigned int *paddress;
 
     vxxw = y + height;
     vyyw = x + width;
 
-    paddress = (unsigned int*)(pBaseVideoMem + (pPos * 0x28000));    
+    bcm2835_gpio_write(TFT_CS,0);
 
-    for (ix = y; ix <= vxxw; ix++) {
+    for (ix = y; ix <= vxxw; ix++) 
+    {
         TFT_Set_Address(ix,x,ix,vyyw);
-        for (iy = x; iy <= vyyw; iy++) {
-            data = *(paddress + (ix << 8) + iy);
-            pBaseVideoAddr = (ix << 8) + iy;
+        for (iy = x; iy <= vyyw; iy++) 
+        {
+            data = pBaseVideoMem[pPos][iy][ix];
+            pBaseVideoAddrX = iy;
+            pBaseVideoAddrY = ix;
             Write_Data(data);
         }
     }
+    
+    bcm2835_gpio_write(TFT_CS,1);
 }
 
 //-------------------------------------------------------------------
@@ -980,17 +1013,17 @@ void HideKeyboard(unsigned int xposini, unsigned int yposini) {
 	pkeyativo = 0x00;
 
 	// Restore old screen
-	TFT_RestoreScreen(0x0000, xposini, yposini, 221, 72);
+	TFT_RestoreScreen(0x01, xposini, yposini, 221, 72);
 }
 
 //-------------------------------------------------------------------
 void ShowKeyboard(unsigned int xposini, unsigned int yposini, unsigned char vnewkey) {
 	unsigned int tl, tc, tx, ty;
-	unsigned char vtecbk, vtecshift[4], vtecfim[4], vteccaps[4], vtam;
+	unsigned char vtecbk, vtecshift[4], vtecfim[4] = {0,0,0,0}, vteccaps[4], vtam = 0;
 
 	if (!pkeyativo) {
 		// Save actual position
-		TFT_SaveScreen(0x0000, xposini, yposini, 221, 72);
+		TFT_SaveScreen(0x01, xposini, yposini, 221, 72);
 		
 		pkeyativo = 0x01;
 	}
@@ -1114,14 +1147,14 @@ void ReturnKeyboard(unsigned int xposini, unsigned int yposini, unsigned int vpo
 	unsigned char tc;
 	unsigned int vpy = 0, vpx = 0;
   ptec[1] = 0x00;
-  char* sqtdtam = '\0';
 
+/*  char* sqtdtam = '\0';
     itoa(vpostx, sqtdtam, 10);
     TFT_Text("       ",100,220,8,White,Blue);
     TFT_Text(sqtdtam,100,220,8,White,Blue);
     itoa(vposty, sqtdtam, 10);
     TFT_Text("       ",200,220,8,White,Red);
-    TFT_Text(sqtdtam,200,220,8,White,Red);
+    TFT_Text(sqtdtam,200,220,8,White,Red);*/
 
     //--- VERIFICA A POSIÇÃO PRESSIONADA
     if (vposty >= yposini && vposty <= (yposini + 17)) {    

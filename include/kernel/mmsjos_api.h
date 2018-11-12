@@ -66,12 +66,13 @@ extern unsigned char vbuttonwin[100];
 extern unsigned int vpostx;
 extern unsigned int vposty;
 extern unsigned char  next_pos;
-extern FAT32_DIR *vdir;
-extern DISK  *vdisk;
+
+extern unsigned char diskDrv;
 extern unsigned long vclusterdir;
 extern unsigned long vclusteros;
 extern unsigned char  *gDataBuffer; // The global data sector buffer
 extern unsigned char  *mcfgfile; // onde eh carregado o arquivo de configuracao e outros arquivos 12K
+
 extern unsigned int  viconef; // onde eh carregado o arquivo de configuracao e outros arquivos 12K
 extern unsigned int  vcorf; // cor padrao de frente
 extern unsigned int  vcorb; // cor padrao de fundo

@@ -5,22 +5,25 @@ OBJCOPY = arm-none-eabi-objcopy
 
 CFLAGS= -march=armv6zk -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -fpic -ffreestanding
 CSRCFLAGS= -O2 -Wall -Wextra
-LFLAGS= -ffreestanding -O2 -nostdlib -lgcc
+LFLAGS= -ffreestanding -O2 -nostdlib -LD:\Projetos\gcc-arm-none-eabi-7-2018-q2-update\lib\gcc\arm-none-eabi\7.3.1\thumb -lgcc
 
 # Location of the files
 KER_SRC = ../src/kernel
 KER_HEAD = ../include
 COMMON_SRC = ../src/common
 DRIVERS_SRC = ../src/drivers
+DISK_SRC = ../src/disk
 OBJ_DIR = objects
 KERSOURCES = $(wildcard $(KER_SRC)/*.c)
 COMMONSOURCES = $(wildcard $(COMMON_SRC)/*.c)
 DRIVERSSOURCES = $(wildcard $(DRIVERS_SRC)/*.c)
+DISKSOURCES = $(wildcard $(DISK_SRC)/*.c)
 ASMSOURCES = $(wildcard $(KER_SRC)/*.S)
 OBJECTS = $(patsubst $(KER_SRC)/%.S, $(OBJ_DIR)/%.o, $(ASMSOURCES))
 OBJECTS += $(patsubst $(KER_SRC)/%.c, $(OBJ_DIR)/%.o, $(KERSOURCES))
 OBJECTS += $(patsubst $(COMMON_SRC)/%.c, $(OBJ_DIR)/%.o, $(COMMONSOURCES))
 OBJECTS += $(patsubst $(DRIVERS_SRC)/%.c, $(OBJ_DIR)/%.o, $(DRIVERSSOURCES))
+OBJECTS += $(patsubst $(DISK_SRC)/%.c, $(OBJ_DIR)/%.o, $(DISKSOURCES))
 HEADERS = $(wildcard $(KER_HEAD)/*.h)
 
 IMG_NAME=mmsjos
@@ -44,6 +47,9 @@ $(OBJ_DIR)/%.o: $(COMMON_SRC)/%.c
 
 $(OBJ_DIR)/%.o: $(DRIVERS_SRC)/%.c
 	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -c $< -o $@ $(CSRCFLAGS)
+
+$(OBJ_DIR)/%.o: $(DISK_SRC)/%.c
+	$(CC) $(CFLAGS) -I$(DISK_SRC) -I$(KER_HEAD) -c $< -o $@ $(CSRCFLAGS)
 
 clean:
 	rm -rf $(OBJ_DIR)

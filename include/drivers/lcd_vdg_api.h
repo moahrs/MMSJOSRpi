@@ -18,6 +18,7 @@
 extern int fabs(int val);  
 extern int TCHVerif(void);
 extern int commVDG(unsigned char *vparam);
+extern void TFT_EN_INT(void);
 
 //----------------------------------------------------------------
 // LCDG Basic Graphic Functions
@@ -45,7 +46,7 @@ extern void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned 
 extern void TFT_Text(char* S,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
 extern void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture);
 extern void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y);
-extern void TFT_Scroll(unsigned char qtdlin, unsigned char ptipo);
+extern void TFT_Scroll(unsigned char qtdlin);
 extern void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 extern void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 

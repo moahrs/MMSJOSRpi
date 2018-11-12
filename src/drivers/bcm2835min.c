@@ -95,15 +95,6 @@ static uint8_t bcm2835_byte_reverse_table[] =
     0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff
 };
 
-int __aeabi_uidiv(int return_value)
-{
-    return 0;
-}   
-long long __aeabi_ldiv(long long return_value)
-{
-    return 0;
-}
-
 uint8_t bcm2835_gpio_lev(uint8_t pin)
 {
     volatile uint32_t* paddr = bcm2835_gpio + BCM2835_GPLEV0/4 + pin/32;

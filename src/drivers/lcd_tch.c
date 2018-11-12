@@ -47,11 +47,6 @@ unsigned int td_gray = 21130;
 unsigned int tl_gray = 31727;
 unsigned int count=0;
 
-int __aeabi_idiv(int return_value)
-{
-    return 0;
-}   
-
 void Touch_Init(void)
 {
     bcm2835_gpio_write(TFT_SCK,0);

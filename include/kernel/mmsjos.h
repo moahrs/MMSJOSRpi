@@ -17,7 +17,7 @@
 
 extern unsigned int vcorwb;
 extern unsigned int vcorwf;
-extern unsigned char vFinalOS; // Atualizar sempre que a compilacao passar desse valor
+extern unsigned char *vFinalOS; // Atualizar sempre que a compilacao passar desse valor
 
 #define MEM_POS_MGICFG 16    // 1024 Bytes
                              // mgi_flags = 16 Bytes de flags/config do MGI
@@ -40,6 +40,7 @@ extern unsigned char vmesc[12][3];
 #define ATTR_VOLUME         0x08
 #define ATTR_LONG_NAME      0x0f
 #define ATTR_DIRECTORY      0x10
+#define ATTR_DIR_SYSTEM     0x16
 #define ATTR_ARCHIVE        0x20
 #define ATTR_MASK           0x3f
 
@@ -191,8 +192,8 @@ extern void togglebox(unsigned char* bstr, unsigned char *vvar, unsigned int x, 
 extern void combobox(unsigned char* vopt, unsigned char *vvar,unsigned char x, unsigned char y, unsigned char vtipo);
 extern void editor(unsigned char* vtexto, unsigned char *vvar,unsigned char x, unsigned char y, unsigned char vtipo);
 extern void VerifyTouchLcd(unsigned char vtipo);
-extern void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight);
-extern void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight);
+extern void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pPage);
+extern void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pPage);
 
 #define DrawVertLine(x1, y1, length, color) FillRect(x1, y1, 0, length, color)
 #define DrawHoriLine(x1, y1, length, color) FillRect(x1, y1, length, 0, color)
@@ -233,6 +234,7 @@ extern void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth,
 
 //--- FAT32 Functions
 extern unsigned char fsFormat (long int serialNumber, char * volumeID);
+extern unsigned char fsMountDisk(void);
 extern void fsSetClusterDir (unsigned long vclusdiratu);
 extern unsigned long fsGetClusterDir (void);
 extern unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsigned char vtipo);

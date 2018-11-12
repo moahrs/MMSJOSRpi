@@ -26,8 +26,9 @@ unsigned char vmove;
 unsigned int long vtimetec;
 unsigned char pDataRdy;
 
-unsigned int* pBaseVideoMem = (unsigned int*)0x1FC00000; // 4MB Video Memory 0x1FC00000 or 0x5FC00000
-unsigned int pBaseVideoAddr;
+unsigned int pBaseVideoMem[11][320][240] = {};	// 4MB Video Memory 0x1FC00000 or 0x5FC00000
+unsigned int pBaseVideoAddrX = 0;
+unsigned int pBaseVideoAddrY = 0;
 
 volatile unsigned char pbytecountw;
 volatile unsigned char pbytecountr;

@@ -60,6 +60,7 @@
 #define __USE_TFT_SCROLL__
 #define __USE_TFT_VDG__
 //#define __USE_UART_MON__
+#define __USE_FAT32_SDDISK__
 
 #include <stddef.h>
 #include <stdint.h>
@@ -77,10 +78,13 @@
 #endif
 #include <drivers/spi_manual.h> 
 #include <kernel/interrupts.h>
+#include <disk/diskio.h>
+#include "common/mylib.h"
+#include "common/mbox.h"
 
 unsigned int vcorwb;
 unsigned int vcorwf;
-unsigned char vFinalOS; // Atualizar sempre que a compilacao passar desse valor
+unsigned char* vFinalOS = (unsigned char*)0x00400000; // Atualizar sempre que a compilacao passar desse valor
 unsigned char paramVDG[255];
 unsigned char arrgDataBuffer[520];
 unsigned char arrvdiratu[128];
@@ -88,6 +92,13 @@ unsigned char arrvdiratup[128];
 unsigned char arrvbufkptr[128];
 unsigned char arrvbuf[64];
 unsigned char arrmcfgfile[12288];
+
+unsigned long memMemory[3];
+
+FAT32_DIR varToPtrvdir;
+FAT32_DIR *vdir = &varToPtrvdir;
+DISK varToPtrvdisk;
+DISK *vdisk = &varToPtrvdisk;
 
 unsigned char strValidChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ^&'@{}[],$=!-#()%.+~_";
 
@@ -100,6 +111,45 @@ int __locale_ctype_ptr(int return_value)
 {
     return 0;
 }   
+
+static unsigned long get_memory(unsigned long vFunc)
+{
+    uintptr_t mb_addr = 0x00007000;     // 0x7000 in L2 cache coherent mode
+    volatile uint32_t *mailbuffer = (uint32_t *)mb_addr;
+
+    /* Get the base clock rate */
+    // set up the buffer
+    mailbuffer[0] = 8 * 4;      // size of this message
+    mailbuffer[1] = 0;          // this is a request
+
+    // next comes the first tag
+    mailbuffer[2] = vFunc;      // get memory tag (arm 0x00010005, vc 0x00010006)
+    mailbuffer[3] = 0x8;        // value buffer size
+    mailbuffer[4] = 0x0;        // 
+    mailbuffer[5] = 0x0;        // 
+    mailbuffer[6] = 0x0;        // space to return 
+
+    // closing tag
+    mailbuffer[7] = 0x0;
+
+    // send the message
+    mbox_write(MBOX_PROP, mb_addr);
+
+    // read the response
+    mbox_read(MBOX_PROP);
+
+    if(mailbuffer[1] != MBOX_SUCCESS)
+    {
+        printf("property mailbox did not return a valid response.\n");
+        return 0;
+    }
+
+    memMemory[0] = mailbuffer[4];
+    memMemory[1] = mailbuffer[5];
+    memMemory[2] = mailbuffer[6];
+
+    return 1;
+}
 
 //-----------------------------------------------------------------------------
 // Principal
@@ -114,8 +164,6 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     bcm2835_init();
 
     mem_init((atag_t *)atags);
-
-    interrupts_init();
 
     spi_man_init();
 
@@ -182,39 +230,35 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
         clearScr(vcorb);
     #endif
 
-    writes("Running MMSJ-OS version 0.1\n\0", vcorf, vcorb);
-    writes(" Raspberry PI Zero W v1.1 at 1Ghz.\n\0", vcorf, vcorb);
-    writes(" Total Memory Found \0", vcorf, vcorb);
-    vbytepic = vtotmem;
-    itoa(vbytepic, sqtdtam, 10);
-    writes(sqtdtam, vcorf, vcorb);
-    writes("MB\n\0", vcorf, vcorb);
+    printf("Running MMSJ-OS version 0.1\n");
+    printf(" Raspberry PI Zero W v1.1 at 1Ghz.\n");
+    printf(" Total Memory Found %dMB\n", vtotmem);
 
     #ifdef __USE_TFT_VDG__
-        writes("VDG Configurations...\n\0", vcorf, vcorb);
-        writes(" Graphic \0", vcorf, vcorb);
-        vbytepic = vxgmax + 1;
-        itoa(vbytepic, sqtdtam, 10);
-        writes(sqtdtam, vcorf, vcorb);
-        writes("x\0", vcorf, vcorb);
-        vbytepic = vygmax + 1;
-        itoa(vbytepic, sqtdtam, 10);
-        writes(sqtdtam, vcorf, vcorb);
-        writes(", Text \0", vcorf, vcorb);
-        vbytepic = vxmax + 1;
-        itoa(vbytepic, sqtdtam, 10);
-        writes(sqtdtam, vcorf, vcorb);
-        writes("x\0", vcorf, vcorb);
-        vbytepic = vymax + 1;
-        itoa(vbytepic, sqtdtam, 10);
-        writes(sqtdtam, vcorf, vcorb);
-        writes("...\n\0", vcorf, vcorb);
+        printf("VDG Configurations...\n");
+        printf(" Graphic %dx%d, Text %dx%d...\n", (vxgmax + 1), (vygmax + 1), (vxmax + 1), (vymax + 1));
 
         if ((vbytevdg & 0x0002) == 0x02)
-            writes(" Touch Module... Found.\n\n\0", vcorf, vcorb);
+            printf(" Touch Module... Found.\n\n");
         else
-            writes(" Touch Module... NOT Found.\n\n\0", Red, White);
+            printf(" Touch Module... NOT Found.\n\n");
     #endif
+
+    printf("Initializing FileSystem... ");
+    vbytepic = fsMountDisk();
+
+    interrupts_init();
+    TFT_EN_INT();
+
+    if (vbytepic != RETURN_OK) 
+    {
+        if (vbytepic == ERRO_B_OPEN_DISK)
+            printf("\nError Mounting Disk. Can't Initialize (%d).\n\n", vbytepic);
+        else
+            printf("\nError Mounting Disk. Can't Read (%d).\n\n", vbytepic);
+    } 
+    else
+        printf("Done.\n\n");
 
     // Inicio SO
     *vdiratup++ = '/';
@@ -259,9 +303,9 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
                     switch (vbytepic) {
                         case 0x0D:  // Enter
                             vlin = vlin + 1;
+                            funcKey(0,2, 0, 0, 50, 0);
                             locate(0, vlin, NOREPOS_CURSOR);
                             *vbufptr = 0x00;
-                            funcKey(0,2, 0, 0, 50, 0);
                             processCmd();
                             putPrompt(noaddline);
                             vbufptr = vbuf;
@@ -354,7 +398,7 @@ void processCmd(void) {
     unsigned char *blin = (unsigned char*)vbuf, vbuffer[128];
     char vlinha[40];
     unsigned int varg = 0, vcrc, vcrcpic;
-    unsigned int ix, iy, iz, ikk;
+    unsigned int ix, iy, iz = 0, ikk = 0;
     unsigned int vbytepic = 0, vrecfim;
     unsigned char *vdirptr = (unsigned char*)&vdir;
     unsigned char cuntam, vparam[32], vparam2[16], vpicret;
@@ -429,15 +473,21 @@ void processCmd(void) {
                 startMGI();
         }
         else if (!strcmp(linhacomando,"VER") && iy == 3) {
-            writes("MMSJ-OS v0.1\n\0", vcorf, vcorb);
+            printf("MMSJ-OS v0.1\n");
         }
         else if (!strcmp(linhacomando,"LS") && iy == 2) {
-            if (fsFindInDir(NULL, TYPE_FIRST_ENTRY) >= ERRO_D_START) {
-                writes("File not found\n\0", vcorf, vcorb);
+//            clearScr(vcorb);
+//            extDebugActiv = 1;
+            vretfat = fsFindInDir(NULL, TYPE_FIRST_ENTRY);
+//            extDebugActiv = 0;
+
+            if (vretfat >= ERRO_D_START) {
+                printf("File not found (%d)\n",vretfat);
             }
             else {
+                printf("\n");
                 while (1) {
-					if (vdir->Attr != ATTR_VOLUME) {
+					if (vdir->Attr != ATTR_VOLUME && vdir->Attr != ATTR_LONG_NAME) {
     					memset(vbuffer, 0x0, 128);
                         vdirptr = (unsigned char*)&vdir;
 
@@ -572,7 +622,7 @@ void processCmd(void) {
                         for(ix = 0; ix <= 39; ix++)
                             vlinha[ix] = vbuffer[ix];
 					}
-					else {
+					else if (vdir->Attr == ATTR_VOLUME) {
       					memset(vlinha, 0x20, 40);
 					    vlinha[5]  = 'D';
 					    vlinha[6]  = 'i';
@@ -604,10 +654,15 @@ void processCmd(void) {
 
                         vlinha[ix] = '\0';
 					}
+                    else {
+                        vlinha[0] = '\0';
+                    }
 
                     // Mostra linha
-                    writes("\n\0", vcorf, vcorb);
-                    writes(vlinha, vcorf, vcorb);
+                    if (vlinha[0])
+                    {
+                        printf("%s\n",vlinha);
+                    }
 
                     // Verifica se Tem mais arquivos no diretorio
 					for (ix = 0; ix <= 7; ix++) {
@@ -635,7 +690,7 @@ void processCmd(void) {
 					}
 
     				if (fsFindInDir((char*)vparam, TYPE_NEXT_ENTRY) >= ERRO_D_START) {
-                        writes("\n\0", vcorf, vcorb);
+                        printf("\n", vcorf, vcorb);
     					break;
     				}
                 }
@@ -726,8 +781,8 @@ void processCmd(void) {
 
                 vretfat = ERRO_D_NOT_FOUND /*fsFindInDir(linhacomando, TYPE_FILE)*/ ;
                 if (vretfat <= ERRO_D_START) {
-                    // Se tiver, carrega em 0x00810000 e executa
-                    loadFile((unsigned char*)linhacomando, (unsigned short*)0x5F800000);
+                    // Se tiver, carrega em 0x01000000 e executa
+                    loadFile((unsigned char*)linhacomando, (unsigned short*)0x00500000);
                     if (!verro)
                         runCmd();
                     else {
@@ -909,6 +964,12 @@ void writechar(int c, void *stream)
 }
 
 //-----------------------------------------------------------------------------
+void writestr(char *msgs)
+{
+    writes(msgs, vcorf, vcorb);
+}
+
+//-----------------------------------------------------------------------------
 void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
     unsigned char ix = 10, iy, ichange = 0;
     unsigned char *ss = (unsigned char*)msgs;
@@ -981,7 +1042,7 @@ void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
 
             if (ichange == 2) {
                 vcol = 0;
-                vlin = vlin + 1;
+                vlin++;
                 locate(vcol, vlin, NOREPOS_CURSOR);
             }
 
@@ -1027,8 +1088,10 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
             if (ptipo == ADD_POS_SCR) {
                 vcol = vcol + 1;
 
-                if ((vlin == (vymax - 1)) && (vcol == vxmax))
-                    vcol = vxmax - 1;
+                if ((vlin == (vymax - 1)) && (vcol == vxmax)) {
+                    vcol = 0;
+                    vlin++;
+                }
 
                 locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
             }
@@ -1036,10 +1099,7 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
         else
         {
             vlin++;
-            vcol = 1;
-
-            if (vlin == (vymax + 1))
-                vlin = vymax;
+            vcol = 0;
 
             locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
         }
@@ -1282,6 +1342,66 @@ void catFile(unsigned char *parquivo) {
 //-----------------------------------------------------------------------------
 // FAT32 Functions
 //-----------------------------------------------------------------------------
+unsigned char fsMountDisk(void)
+{
+    DSTATUS sta;
+    //  mailbox_emmc_clock(1);
+    
+    sta = disk_initialize(diskDrv);
+    if (sta & STA_NOINIT) {
+        return ERRO_B_OPEN_DISK;
+    }
+
+    // LER MBR
+    if (disk_read(diskDrv, gDataBuffer, 0x00000000, 1) != RES_OK)
+        return ERRO_B_READ_DISK;
+
+    vdisk->firsts  = (((unsigned long)gDataBuffer[457] << 24) & 0xFF000000);
+    vdisk->firsts |= (((unsigned long)gDataBuffer[456] << 16) & 0x00FF0000);
+    vdisk->firsts |= (((unsigned long)gDataBuffer[455] << 8) & 0x0000FF00);
+    vdisk->firsts |= ((unsigned long)gDataBuffer[454] & 0x000000FF);
+
+    // LER FIRST CLUSTER
+    if (disk_read(diskDrv, gDataBuffer, vdisk->firsts, 1) != RES_OK)
+        return ERRO_B_READ_DISK;
+
+    vdisk->reserv  = (unsigned int)gDataBuffer[15] << 8;
+    vdisk->reserv |= (unsigned int)gDataBuffer[14];
+
+    vdisk->fat = vdisk->reserv + vdisk->firsts;
+
+    vdisk->sectorSize  = (unsigned long)gDataBuffer[12] << 8;
+    vdisk->sectorSize |= (unsigned long)gDataBuffer[11];
+    vdisk->SecPerClus = gDataBuffer[13];
+
+    vdisk->fatsize  = (unsigned long)gDataBuffer[39] << 24;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[38] << 16;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[37] << 8;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[36];
+
+    vdisk->root  = (unsigned long)gDataBuffer[47] << 24;
+    vdisk->root |= (unsigned long)gDataBuffer[46] << 16;
+    vdisk->root |= (unsigned long)gDataBuffer[45] << 8;
+    vdisk->root |= (unsigned long)gDataBuffer[44];
+
+    vdisk->type = FAT32;
+
+    vdisk->data = vdisk->reserv + (2 * vdisk->fatsize);
+
+    vclusterdir = vdisk->root;
+
+/*    printf("\nfirsts: %x. ", vdisk->firsts);
+    printf("\nreserv: %x. ", vdisk->reserv);
+    printf("\nfat: %x. ", vdisk->fat);
+    printf("\nsectorSize: %x. ", vdisk->sectorSize);
+    printf("\nSecPerClus: %x. ", vdisk->SecPerClus);
+    printf("\nfatsize: %x. ", vdisk->fatsize);
+    printf("\nroot: %x. ", vdisk->root);
+    printf("\ndata: %x. ", vdisk->data);*/
+
+    return RETURN_OK;
+}
+
 void fsSetClusterDir (unsigned long vclusdiratu) {
     vclusterdir = vclusdiratu;
 }
@@ -1587,7 +1707,11 @@ unsigned char fsRWFile(unsigned long vclusterini, unsigned long voffset, unsigne
 
 	// Posiciona no setor dentro do cluster para ler/gravar
 	vtemp1 = ((vclusternew - 2) * vdisk->SecPerClus);
-	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+    #ifdef __USE_FAT32_SDDISK__
+        vtemp2 = vdisk->firsts * 2;
+    #else
+    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+    #endif
 	vdata = vtemp1 + vtemp2;
 	vtemp1 = (voffclus * vdisk->SecPerClus);
 	vdata += voffsec - vtemp1;
@@ -1837,7 +1961,13 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 
 	vfat = vdisk->fat;
 	vtemp1 = ((vclusterdir - 2) * vdisk->SecPerClus);
-	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+
+    #ifdef __USE_FAT32_SDDISK__
+        vtemp2 = vdisk->firsts * 2;
+    #else
+    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+    #endif
+
 	vdata = vtemp1 + vtemp2;
 	vclusterfile = ERRO_D_NOT_FOUND;
 	vclusterdirnew = vclusterdir;
@@ -1909,12 +2039,18 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 				vdir->DirClusSec = vdata;
 				vdir->DirEntry = ix;
 
-				if (vtype == TYPE_FIRST_ENTRY) {
-					if (vdir->Name[0] != DIR_DEL) {
-						if (vdir->Name[0] != DIR_EMPTY) {
-							vclusterfile = vdir->FirstCluster;
-    						vdata = LAST_CLUSTER_FAT32;
-    						break;
+				if (vtype == TYPE_FIRST_ENTRY) 
+                {
+					if (vdir->Name[0] != DIR_DEL) 
+                    {
+						if (vdir->Name[0] != DIR_EMPTY) 
+                        {
+                            if (vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM)
+							{
+                                vclusterfile = vdir->FirstCluster;
+    						    vdata = LAST_CLUSTER_FAT32;
+    						    break;
+                            }
     					}
 					}
 				}
@@ -2053,7 +2189,11 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 							if (vtype == TYPE_CREATE_DIR) {
 	  							// Posicionar na nova posicao do diretorio
                             	vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
-                            	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #ifdef __USE_FAT32_SDDISK__
+                                    vtemp2 = vdisk->firsts * 2;
+                                #else
+                                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #endif
                             	vdata = vtemp1 + vtemp2;
 
 								// Limpar novo cluster do diretorio (Zerar)
@@ -2066,7 +2206,11 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 								}
 
                             	vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
-                            	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #ifdef __USE_FAT32_SDDISK__
+                                    vtemp2 = vdisk->firsts * 2;
+                                #else
+                                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #endif
                             	vdata = vtemp1 + vtemp2;
 
 	  							// Criar diretorio . (atual)
@@ -2164,7 +2308,7 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 					}
 				}
 				else if (vtype != TYPE_FIRST_ENTRY) {
-					if (vdir->Name[0] != DIR_EMPTY && vdir->Name[0] != DIR_DEL) {
+					if (vdir->Name[0] != DIR_EMPTY && vdir->Name[0] != DIR_DEL && vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM) {
 						vcomp = 1;
 						for (iz = 0; iz <= 10; iz++) {
 							if (iz <= 7) {
@@ -2268,7 +2412,11 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 			if (vclusterdirnew != LAST_CLUSTER_FAT32) {
 				// Devolve a proxima posicao para procura/uso
             	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
-            	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                #ifdef __USE_FAT32_SDDISK__
+                    vtemp2 = vdisk->firsts * 2;
+                #else
+                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                #endif
             	vdata = vtemp1 + vtemp2;
 			}
 			else {
@@ -2294,7 +2442,11 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 
 						// Posicionar na nova posicao do diretorio
                     	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
-                    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #ifdef __USE_FAT32_SDDISK__
+                            vtemp2 = vdisk->firsts * 2;
+                        #else
+                        	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #endif
                     	vdata = vtemp1 + vtemp2;
 
 						// Limpar novo cluster do diretorio (Zerar)
@@ -2307,7 +2459,11 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
 						}
 
                     	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
-                    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #ifdef __USE_FAT32_SDDISK__
+                            vtemp2 = vdisk->firsts * 2;
+                        #else
+                        	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #endif
                     	vdata = vtemp1 + vtemp2;
 					}
 					else {
@@ -2730,144 +2886,32 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
 }
 
 //-------------------------------------------------------------------------
-unsigned char fsSectorRead(unsigned long vsector, unsigned char* vbuffer){
-    unsigned short vrecfim, vbytepic;
-    unsigned char vbyteprog[128], vbytes[4],cc, dd;
-    unsigned short xdado = 0, xcounter = 0;
-    unsigned short vcrc, vcrcpic, vloop;
-    unsigned int ix;
-    unsigned long vsectorok;
-    char *sqtdtam;
+unsigned char fsSectorRead(unsigned long vsector, unsigned char* vbuffer)
+{
+    DRESULT vstatus;
 
-    vsectorok = (vsector & 0xFF000000) >> 24;
-    vbytes[0] = (unsigned char)vsectorok;
-    vsectorok = (vsector & 0x00FF0000) >> 16;
-    vbytes[1] = (unsigned char)vsectorok;
-    vsectorok = (vsector & 0x0000FF00) >> 8;
-    vbytes[2] = (unsigned char)vsectorok;
-    vsectorok = vsector & 0x000000FF;
-    vbytes[3] = (unsigned char)vsectorok;
+    vstatus = disk_read(diskDrv, vbuffer, vsector, 1);
 
-    /* ver como fazer 
-    sendPic(0x05);
-    sendPic(picSectorRead);
-    sendPic(vbytes[0]);
-    sendPic(vbytes[1]);
-    sendPic(vbytes[2]);
-    sendPic(vbytes[3]);
-
-    vrecfim = 1;
-    verro = 0;
-    ix = 0;
-
-    while (vrecfim) {
-        vloop = 1;
-        while (vloop) {
-            // Processa Retorno do PIC
-          	recPic();
-
-            if (vbytepic == picCommData) {
-                // Carrega Dados Recebidos
-                vcrc = 0;
-        		for (cc = 0; cc <= 127 ; cc++)
-          		{
-              		recPic(); // Ler dados do PIC
-          			vbyteprog[cc] = vbytepic;
-          			vcrc += vbyteprog[cc];
-          		}
-
-                // Recebe 2 Bytes CRC
-          		recPic();
-          		vcrcpic = vbytepic;
-          		recPic();
-          		vcrcpic |= ((vbytepic << 8) & 0xFF00);
-
-                if (vcrc == vcrcpic) {
-                    sendPic(0x01);
-                    sendPic(0xC5);
-                    vloop = 0;
-                }
-                else {
-                    sendPic(0x01);
-                    sendPic(0xFF);
-                }
-            }
-            else if (vbytepic == picCommStop) {
-                // Finaliza ComunicaÃ§Ã£o Serial
-                vloop = 0;
-          		vrecfim = 0;
-            }
-            else {
-                vloop = 0;
-                vrecfim = 0;
-                verro = 1;
-            }
-        }
-
-        if (vrecfim) {
-            for (dd = 00; dd <= 127; dd++){
-                vbuffer[ix] = vbyteprog[dd];
-                ix++;
-            }
-        }
+    if (vstatus != RES_OK)
+    {
+        printf("Disk I/O Read Error (%d)\n",vstatus);
+        return 0;
     }
-    */
 
     return 1;
 }
 
 //-------------------------------------------------------------------------
-unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsigned char vtipo){
-    unsigned char ix, vbytes[4], idd, idd1;
-    unsigned int vpos = 0, ikk, ikk1, vcrc, vbytepic, iddok;
-    unsigned long vsectorok;
+unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsigned char vtipo)
+{
+    DRESULT vstatus;
 
-    vsectorok = (vsector & 0xFF000000) >> 24;
-    vbytes[0] = (unsigned char)vsectorok;
-    vsectorok = (vsector & 0x00FF0000) >> 16;
-    vbytes[1] = (unsigned char)vsectorok;
-    vsectorok = (vsector & 0x0000FF00) >> 8;
-    vbytes[2] = (unsigned char)vsectorok;
-    vsectorok = vsector & 0x000000FF;
-    vbytes[3] = (unsigned char)vsectorok;
+    vstatus = disk_write(diskDrv, vbuffer, vsector, 1);
 
-    while (vpos < 512) {
-        iddok = (vpos & 0xFF00) >> 8;
-        idd = (unsigned char)iddok;
-        iddok = vpos & 0x00FF;
-        idd1 = (unsigned char)iddok;
-        vcrc = 0;
-
-        /* ver como fazer
-        sendPic(73);
-        sendPic(picSectorWrite);
-
-        sendPic(idd);
-        sendPic(idd1);
-
-        sendPic(vbytes[0]);
-        sendPic(vbytes[1]);
-        sendPic(vbytes[2]);
-        sendPic(vbytes[3]);
-
-        for(ix = 0; ix <= 63; ix++) {
-            ikk = vpos + ix;
-            sendPic(vbuffer[ikk]);
-            vcrc = vcrc + vbuffer[ikk];
-        }
-
-        iddok = (vcrc & 0xFF00) >> 8;
-        idd = (unsigned char)iddok;
-        iddok = vcrc & 0x00FF;
-        idd1 = (unsigned char)iddok;
-
-        sendPic(idd);
-        sendPic(idd1);
-
-        recPic();*/
-
-        if (vbytepic == 0x00)
-            vpos += 64;
+    if (vstatus != RES_OK)
+    {
+        printf("Disk I/O Write Error (%d)\n",vstatus);
+        return 0;
     }
 
     return 1;
@@ -2946,9 +2990,9 @@ void locatexy(unsigned int xx, unsigned int yy) {
 }
 
 //-----------------------------------------------------------------------------
-void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
+void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pPage) {
     #ifdef __USE_TFT_VDG__
-        paramVDG[0] = 9;
+        paramVDG[0] = 10;
         paramVDG[1] = 0xEA;
         paramVDG[2] = yi >> 8;
         paramVDG[3] = yi;
@@ -2958,14 +3002,15 @@ void SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned 
         paramVDG[7] = pheight;
         paramVDG[8] = pwidth >> 8;
         paramVDG[9] = pwidth;
+        paramVDG[10] = pPage;
         commVDG(paramVDG);    
     #endif
 }
 
 //-----------------------------------------------------------------------------
-void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
+void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pPage) {
     #ifdef __USE_TFT_VDG__
-        paramVDG[0] =  9;
+        paramVDG[0] =  10;
         paramVDG[1] =  0xEB;
         paramVDG[2] =  yi >> 8;
         paramVDG[3] =  yi;
@@ -2975,6 +3020,7 @@ void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsign
         paramVDG[7] =  pheight;
         paramVDG[8] =  pwidth >> 8;
         paramVDG[9] =  pwidth;
+        paramVDG[10] = pPage;
         commVDG(paramVDG);    
     #endif
 }
@@ -4039,7 +4085,7 @@ unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
     	yf = 120 + ym - 1;
 
     	// Desenha Linha Fora
-        SaveScreen(xi+2,yi,pwidth,pheight);
+        SaveScreen(0x03,xi+2,yi,pwidth,pheight);
 
         FillRect(xi,yi,pwidth,pheight,White);
         vparam[0] = xi;
@@ -4099,7 +4145,7 @@ unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
           for (cc = 0; cc <= btime; cc++);
       }
 
-      RestoreScreen(xi+2,yi,pwidth,pheight);
+      RestoreScreen(0x03, xi+2,yi,pwidth,pheight);
     #endif
 
     return ii;
