@@ -21,7 +21,7 @@ typedef struct page {
 } page_t;
 
 
-void mem_init(atag_t * atags);
+unsigned long mem_init( /*atag_t * atags*/ );
 
 void * alloc_page(void);
 void free_page(void * ptr);

@@ -35,6 +35,7 @@ typedef struct atag {
     };
 } atag_t;
 
-uint32_t get_mem_size(atag_t * atags);
+extern uint32_t get_mem_size(atag_t * atags);
+extern unsigned long get_memory(unsigned long vFunc);
 
 #endif

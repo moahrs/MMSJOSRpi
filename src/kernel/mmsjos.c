@@ -80,11 +80,10 @@
 #include <kernel/interrupts.h>
 #include <disk/diskio.h>
 #include "common/mylib.h"
-#include "common/mbox.h"
 
 unsigned int vcorwb;
 unsigned int vcorwf;
-unsigned char* vFinalOS = (unsigned char*)0x00400000; // Atualizar sempre que a compilacao passar desse valor
+unsigned char* vFinalOS = (unsigned char*)0x00700000; // Atualizar sempre que a compilacao passar desse valor
 unsigned char paramVDG[255];
 unsigned char arrgDataBuffer[520];
 unsigned char arrvdiratu[128];
@@ -92,8 +91,6 @@ unsigned char arrvdiratup[128];
 unsigned char arrvbufkptr[128];
 unsigned char arrvbuf[64];
 unsigned char arrmcfgfile[12288];
-
-unsigned long memMemory[3];
 
 FAT32_DIR varToPtrvdir;
 FAT32_DIR *vdir = &varToPtrvdir;
@@ -112,45 +109,6 @@ int __locale_ctype_ptr(int return_value)
     return 0;
 }   
 
-static unsigned long get_memory(unsigned long vFunc)
-{
-    uintptr_t mb_addr = 0x00007000;     // 0x7000 in L2 cache coherent mode
-    volatile uint32_t *mailbuffer = (uint32_t *)mb_addr;
-
-    /* Get the base clock rate */
-    // set up the buffer
-    mailbuffer[0] = 8 * 4;      // size of this message
-    mailbuffer[1] = 0;          // this is a request
-
-    // next comes the first tag
-    mailbuffer[2] = vFunc;      // get memory tag (arm 0x00010005, vc 0x00010006)
-    mailbuffer[3] = 0x8;        // value buffer size
-    mailbuffer[4] = 0x0;        // 
-    mailbuffer[5] = 0x0;        // 
-    mailbuffer[6] = 0x0;        // space to return 
-
-    // closing tag
-    mailbuffer[7] = 0x0;
-
-    // send the message
-    mbox_write(MBOX_PROP, mb_addr);
-
-    // read the response
-    mbox_read(MBOX_PROP);
-
-    if(mailbuffer[1] != MBOX_SUCCESS)
-    {
-        printf("property mailbox did not return a valid response.\n");
-        return 0;
-    }
-
-    memMemory[0] = mailbuffer[4];
-    memMemory[1] = mailbuffer[5];
-    memMemory[2] = mailbuffer[6];
-
-    return 1;
-}
-
 //-----------------------------------------------------------------------------
 // Principal
 //-----------------------------------------------------------------------------
@@ -163,7 +121,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     bcm2835_init();
 
-    mem_init((atag_t *)atags);
+    vtotmem = mem_init( /*(atag_t *)atags*/ );
 
     spi_man_init();
 
@@ -197,7 +155,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vovery = 0;   // Indica sem overlay, usando tela de texto.
     vxmaxold = 0;
     vymaxold = 0;
-    vtotmem = 512;
+    vtotmem = (vtotmem >> 20);
 
     // Recuperar informacoes do Video
     #ifdef __USE_TFT_VDG__
@@ -782,7 +740,7 @@ void processCmd(void) {
                 vretfat = ERRO_D_NOT_FOUND /*fsFindInDir(linhacomando, TYPE_FILE)*/ ;
                 if (vretfat <= ERRO_D_START) {
                     // Se tiver, carrega em 0x01000000 e executa
-                    loadFile((unsigned char*)linhacomando, (unsigned short*)0x00500000);
+                    loadFile((unsigned char*)linhacomando, (unsigned char*)0x00800000);
                     if (!verro)
                         runCmd();
                     else {
@@ -1157,11 +1115,11 @@ void locate(unsigned char pcol, unsigned char plin, unsigned char pcur) {
 }
 
 //-----------------------------------------------------------------------------
-unsigned long loadFile(unsigned char *parquivo, unsigned short* xaddress)
+unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress)
 {
     unsigned short cc, dd;
     unsigned char vbuffer[128];
-    unsigned int vbytegrava = 0;
+    unsigned char vbytegrava = 0;
     unsigned short xdado = 0, xcounter = 0;
     unsigned short vcrc, vcrcpic, vloop;
     unsigned long vsizeR, vsizefile = 0;
@@ -1175,12 +1133,8 @@ unsigned long loadFile(unsigned char *parquivo, unsigned short* xaddress)
 
 			if (vsizeR != 0) {
                 for (dd = 00; dd <= 127; dd += 2){
-                	vbytegrava = (unsigned int)vbuffer[dd] << 8;
-                	vbytegrava = vbytegrava | (vbuffer[dd + 1] & 0x00FF);
-
-                    // Grava Dados na Posição Especificada
-                    *xaddress = vbytegrava;
-                    xaddress += 1;
+                	vbytegrava = vbuffer[dd];
+                    *xaddress++ = vbytegrava;
                 }
 
                 vsizefile += 128;
@@ -1205,7 +1159,7 @@ unsigned char loadCFG(unsigned char ptipo) {
     unsigned char *mcfgfileptr = (unsigned char*)mcfgfile, varquivo[12];
 
     strcpy((char*)varquivo,"MMSJCFG.INI");
-    loadFile(varquivo, (unsigned short*)&mcfgfile);
+    loadFile(varquivo, (unsigned char*)&mcfgfile);
 
     if (!verro) {
         vset[0] = 0x00;
@@ -1305,7 +1259,7 @@ void catFile(unsigned char *parquivo) {
     while (*parqptr++)
         vqtd++;
 
-    vsizefile = loadFile(parquivo, (unsigned short*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+    vsizefile = loadFile(parquivo, (unsigned char*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
 
     if (!verro) {
         while (vsizefile > 0) {
@@ -1345,6 +1299,8 @@ void catFile(unsigned char *parquivo) {
 unsigned char fsMountDisk(void)
 {
     DSTATUS sta;
+    unsigned char ixTimeout = 0;
+
     //  mailbox_emmc_clock(1);
     
     sta = disk_initialize(diskDrv);
@@ -1353,8 +1309,18 @@ unsigned char fsMountDisk(void)
     }
 
     // LER MBR
-    if (disk_read(diskDrv, gDataBuffer, 0x00000000, 1) != RES_OK)
-        return ERRO_B_READ_DISK;
+    ixTimeout = 4;
+    while (1) 
+    {
+        ixTimeout--;
+        if (disk_read(diskDrv, gDataBuffer, 0x00000000, 1) != RES_OK)
+        {
+            if (ixTimeout == 0)
+                return ERRO_B_READ_DISK;
+        }
+        else
+            break;
+    }
 
     vdisk->firsts  = (((unsigned long)gDataBuffer[457] << 24) & 0xFF000000);
     vdisk->firsts |= (((unsigned long)gDataBuffer[456] << 16) & 0x00FF0000);
@@ -3330,12 +3296,12 @@ void startMGI(void) {
         writesxy(86,155,8,"Loading Config",vcorwf,vcorwb);
         vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_MGICFG);
         _strcat(vnomefile,"MMSJMGI",".CFG");
-        loadFile(vnomefile, (unsigned short*)vFinalOSPos);
+        loadFile(vnomefile, (unsigned char*)vFinalOSPos);
 
         writesxy(86,155,8,"Loading Icons ",vcorwf,vcorwb);
         vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_ICONES);
         _strcat(vnomefile,"MOREICON",".LIB");
-        loadFile(vnomefile, (unsigned short*)vFinalOSPos);
+        loadFile(vnomefile, (unsigned char*)vFinalOSPos);
 
         redrawMain();
 
@@ -3448,7 +3414,7 @@ void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
         if (vicone < 50) {
             ptr_prg = ptr_prg + (vicone * 10);
             _strcat(vnomefile,(char*)ptr_prg,".ICO");
-            loadFile(vnomefile, (unsigned short*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+            loadFile(vnomefile, (unsigned char*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
             if (verro)
                 vicone = 59;
             else

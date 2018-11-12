@@ -150,7 +150,7 @@ extern void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor);
 extern void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsigned char ptipo);
 extern void putPrompt(unsigned int plinadd);
 extern void locate(unsigned char pcol, unsigned char plin, unsigned char pcur);
-extern unsigned long loadFile(unsigned char *parquivo, unsigned short* xaddress);
+extern unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress);
 extern void runCmd(void);
 extern unsigned char loadCFG(unsigned char ptipo);
 extern void catFile(unsigned char *parquivo);

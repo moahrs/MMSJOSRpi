@@ -38,11 +38,11 @@ page_list_t free_pages;
 
 
 
-void mem_init(atag_t * atags) {
+unsigned long mem_init( /*atag_t * atags*/ ) {
     uint32_t mem_size, page_array_len, kernel_pages, page_array_end, i;
 
     // Get the total number of pages
-    mem_size = get_mem_size(atags);
+    mem_size = get_memory(0x00010005);
     num_pages = mem_size / PAGE_SIZE;
 
     // Allocate space for all those pages' metadata.  Start this block just after the kernel image is finished
@@ -76,6 +76,7 @@ void mem_init(atag_t * atags) {
     page_array_end = (uint32_t)&__end + page_array_len;
     heap_init(page_array_end);
 
+    return mem_size;
 }
 
 void * alloc_page(void) {
