@@ -567,7 +567,7 @@ void TFT_Fill(unsigned int color)
     {
       pBaseVideoMem[0][i][j] = color;
 	  	bcm2835_gpio_write(TFT_WR,0);
-	  	Delayns(70);
+	  	Delayns(15);
 	  	bcm2835_gpio_write(TFT_WR,1);
     }
   }
@@ -587,7 +587,7 @@ void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,uns
     {
       pBaseVideoMem[0][i][j] = color;
 	  	bcm2835_gpio_write(TFT_WR,0);
-	  	Delayns(70);
+	  	Delayns(15);
 	  	bcm2835_gpio_write(TFT_WR,1);
     }
   }
@@ -856,8 +856,8 @@ void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned
     TFT_Set_Address(pos_x, pos_y, pos_x + dim_y - 1, pos_y + dim_x - 1);
     for(y = pos_y; y < (pos_y + dim_x); y++ ) {
 	    for(x = pos_x; x < (pos_x + dim_y); x++ ) {
-            pBaseVideoAddrX = x;
-            pBaseVideoAddrY = y;
+            pBaseVideoAddrX = y;
+            pBaseVideoAddrY = x;
             Write_Data(*picture++);
         }
     }

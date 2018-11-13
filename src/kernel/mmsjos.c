@@ -1132,7 +1132,7 @@ unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress)
 			vsizeR = fsReadFile((char*)parquivo, vsizefile, vbuffer, 128);
 
 			if (vsizeR != 0) {
-                for (dd = 00; dd <= 127; dd += 2){
+                for (dd = 00; dd <= 127; dd += 1){
                 	vbytegrava = vbuffer[dd];
                     *xaddress++ = vbytegrava;
                 }
@@ -2913,10 +2913,13 @@ void writesxy(unsigned int x, unsigned int y, unsigned char sizef, char *msgs, u
 
             iy = 11;
             while (*msgs) {
-                if (*msgs >= 0x20 && *msgs <= 0x7F)
+                if (*msgs >= 0x20 && *msgs <= 0x7F) 
+                {
                     paramVDG[iy] = *msgs;
+                    paramVDG[iy + 1] = '\0';
+                    iy++;
+                }
                 msgs++;
-                iy++;
             }
 
             commVDG(paramVDG);
@@ -2994,7 +2997,7 @@ void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsign
 //-----------------------------------------------------------------------------
 void SetDot(unsigned int x, unsigned int y, unsigned int color) {
     #ifdef __USE_TFT_VDG__
-        paramVDG[0] =  9;
+        paramVDG[0] =  8;
         paramVDG[1] =  0xD7;
         paramVDG[2] =  x >> 8;
         paramVDG[3] =  x;
@@ -3631,7 +3634,7 @@ void VerifyTouchLcd(unsigned char vtipo) {
     while (!vbytepic) {
         getKey();
 
-        vbytetec = vbytepic;
+        vbytepic = paramVDG[0];
 
         if (vbytepic == 0xFF) {
             paramVDG[0] =  0x01;
@@ -3642,30 +3645,6 @@ void VerifyTouchLcd(unsigned char vtipo) {
             vposty += paramVDG[1] & 0x00FF;
             vpostx = paramVDG[2] << 8;
             vpostx += paramVDG[3] & 0x00FF;
-/*            itoa(*vpostx, sqtdtam, 10);
-            writesxy(5, 100, 16, "          ", Red, White);
-            writesxy(5, 100, 16, sqtdtam, Red, White);
-            itoa(*vposty, sqtdtam, 10);
-            writesxy(5, 150, 16, "          ", Red, White);
-            writesxy(5, 150, 16, sqtdtam, Red, White);*/
-        }
-        else {
-/*            if (vbytepic != 0) {
-                locatexy(5, 60);
-                writecxy(16, '@', Red, White);
-                locatexy(5, 80);
-                writecxy(16, ' ', Red, White);
-                writesxy(5, 100,16, "          ", Red, White);
-                writesxy(5, 150,16, "          ", Red, White);
-
-                if (vbytepic >= 32 && vbytepic <= 127) {
-                    vtec = vbytepic;
-                    locatexy(5, 60);
-                    writecxy(16, ' ', Red, White);
-                    locatexy(5, 80);
-                    writecxy(16, vtec, Red, White);
-                }
-            }*/
         }
 
         if (!vtipo)
