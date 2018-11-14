@@ -399,42 +399,7 @@ void log_error(int error_id) {
 	writechar((int)'0'+error_id, (void*)1); // error_id must be between 0 and 9;
 	while(1) {}
 }
-
-
-/* Following are for future uspi support */
-void LogWrite (const char *pSource,		// short name of module
-	       unsigned	   Severity,		// see above
-	       const char *pMessage, ...)	// uses printf format options
-{
-	switch(Severity) {
-	case 1:
-		printf("Error: ");
-		break;
-	case 2:
-		printf("Warning: ");
-		break;
-	case 3:
-		printf("Notice: ");
-		break;
-	case 4:
-	default:
-		printf("DEBUG: ");
-	}
-	printf("from %s, %s\n", pSource, pMessage);
-}
-
-void uspi_assertion_failed (const char *pExpr, const char *pFile, unsigned nLine)
-{
-	printf("Assertion (%s) from %s failed %d\n", pExpr, pFile, nLine);
-	while(1) {}
-}
-
-void DebugHexdump (const void *pBuffer, unsigned nBufLen, const char *pSource /* = 0 */)
-{
-	printf("Dump from %s\n", pSource);
-	dump((unsigned char *) pBuffer, nBufLen);
-}
-
+ 
 void gpioSetFunction(int pin, uint32_t val)
 {
 	uint32_t adr, reg;
@@ -491,4 +456,3 @@ void gpioSetPull(int pin, int val)
 	mmio_write(GPPUD, 0);
 	mmio_write(adr, 0);
 }
-	   

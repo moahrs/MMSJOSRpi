@@ -40,9 +40,10 @@ page_list_t free_pages;
 
 unsigned long mem_init( /*atag_t * atags*/ ) {
     uint32_t mem_size, page_array_len, kernel_pages, page_array_end, i;
-
+    mBoxInfoResp MBOX_INFO_MEM;
     // Get the total number of pages
-    mem_size = get_memory(0x00010005);
+    MBOX_INFO_MEM = get_info_arm(MBOX_GET_ARM_MEMORY);
+    mem_size = (MBOX_INFO_MEM.size - (8 << 20));   // Diminui 8MB p/ o SO (System, LCD VDG, Variables, etc...)
     num_pages = mem_size / PAGE_SIZE;
 
     // Allocate space for all those pages' metadata.  Start this block just after the kernel image is finished

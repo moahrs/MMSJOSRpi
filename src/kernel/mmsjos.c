@@ -12,7 +12,23 @@
 * ---------------
 *
 *   SDRAM 512MB
-* +-------------+ 40000000h
+* +-------------+ 00000000h
+* | SYSTEM 32KB |
+* +-------------+ 00007FFFh
+* |             | 00008000h
+* | OS & LCDVDG |
+* |     8MB     |
+* |             |
+* +-------------+ 007FFFFFh
+* |             | 00800000h
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* |             |
+* |  USER AREA  |
+* |    440MB    |
 * |             |
 * |             |
 * |             |
@@ -20,25 +36,14 @@
 * |             |
 * |             |
 * |             |
+* |             | 1BFFFFFFh
+* +-------------+ 1C000000h
 * |             |
 * |             |
+* |  GPU 64MB   | 
 * |             |
 * |             |
-* |             |
-* |             |
-* |             |
-* |             |
-* |             |
-* |             |
-* +-------------+ 5F800000h
-* |             |
-* | SISTEMA 4MB | 
-* |             | 5FBFFFFFh
-* +-------------+ 5FC00000h
-* |             |
-* | VIDEO   4MB | 
-* |             |
-* +-------------+ 5FFFFFFFh 
+* +-------------+ 1FFFFFFFh 
 *
 *--------------------------------------------------------------------------------
 *
@@ -80,10 +85,14 @@
 #include <kernel/interrupts.h>
 #include <disk/diskio.h>
 #include "common/mylib.h"
+#include "drivers/rpi-usb-api.h"            // This units header
+
+unsigned char* pVersionSO = "0.1";
 
 unsigned int vcorwb;
 unsigned int vcorwf;
-unsigned char* vFinalOS = (unsigned char*)0x00700000; // Atualizar sempre que a compilacao passar desse valor
+unsigned char* vMemSystemArea = (unsigned char*)0x00700000;       // 1MB - Atualizar sempre que a compilacao passar desse valor
+unsigned char* vMemUserArea = (unsigned char*)0x00800000;   // 440MB - Atualizar sempre que a compilacao passar desse valor
 unsigned char paramVDG[255];
 unsigned char arrgDataBuffer[520];
 unsigned char arrvdiratu[128];
@@ -91,7 +100,13 @@ unsigned char arrvdiratup[128];
 unsigned char arrvbufkptr[128];
 unsigned char arrvbuf[64];
 unsigned char arrmcfgfile[12288];
+unsigned long vtotclock;
+uint16_t vboardmodel;
+uint16_t vboardrev;
+uint8_t vboardmacaddr[8];
+uint16_t vboardserial;
 
+mBoxInfoResp MBOX_INFO_BOARD;
 FAT32_DIR varToPtrvdir;
 FAT32_DIR *vdir = &varToPtrvdir;
 DISK varToPtrvdisk;
@@ -122,6 +137,23 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     bcm2835_init();
 
     vtotmem = mem_init( /*(atag_t *)atags*/ );
+
+    vtotclock = get_clock_hz(MBOX_GET_CLOCK_RATE);
+ /*   MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_MODEL);
+    vboardmodel = MBOX_INFO_BOARD.modelrev;
+    MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_REVISION);
+    vboardrev = MBOX_INFO_BOARD.modelrev;
+    MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_MAC_ADDRESS);
+    vboardmacaddr[0] = MBOX_INFO_BOARD.byte00;
+    vboardmacaddr[1] = MBOX_INFO_BOARD.byte01;
+    vboardmacaddr[2] = MBOX_INFO_BOARD.byte02;
+    vboardmacaddr[3] = MBOX_INFO_BOARD.byte03;
+    vboardmacaddr[4] = MBOX_INFO_BOARD.byte04;
+    vboardmacaddr[5] = MBOX_INFO_BOARD.byte05;
+    vboardmacaddr[6] = MBOX_INFO_BOARD.byte06;
+    vboardmacaddr[7] = MBOX_INFO_BOARD.byte07;
+    MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_SERIAL);
+    vboardserial = MBOX_INFO_BOARD.serial;*/
 
     spi_man_init();
 
@@ -156,6 +188,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vxmaxold = 0;
     vymaxold = 0;
     vtotmem = (vtotmem >> 20);
+    vtotclock = (vtotclock / 1000000);
 
     // Recuperar informacoes do Video
     #ifdef __USE_TFT_VDG__
@@ -188,18 +221,22 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
         clearScr(vcorb);
     #endif
 
-    printf("Running MMSJ-OS version 0.1\n");
-    printf(" Raspberry PI Zero W v1.1 at 1Ghz.\n");
-    printf(" Total Memory Found %dMB\n", vtotmem);
+    printf("Running MMSJ-OS version %s\n", pVersionSO);
+    printf(" Raspberry PI Zero W v1.1 at %d%sHz.\n", ((vtotclock >= 1000) ? (vtotclock / 1000) : vtotclock), ((vtotclock >= 1000) ? "G" : "M"));
+/*    printf("    Board Model %04x\n", vboardmodel);
+    printf("    Board Revision %04x\n", vboardrev);
+    printf("    Board MAC %02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x\n", vboardmacaddr[0], vboardmacaddr[1], vboardmacaddr[2], vboardmacaddr[3], vboardmacaddr[4], vboardmacaddr[5], vboardmacaddr[6], vboardmacaddr[7]);
+    printf("    Board Serial %08x\n", vboardserial);*/
+    printf(" Total Free Memory %dMB\n", vtotmem);
 
     #ifdef __USE_TFT_VDG__
         printf("VDG Configurations...\n");
         printf(" Graphic %dx%d, Text %dx%d...\n", (vxgmax + 1), (vygmax + 1), (vxmax + 1), (vymax + 1));
 
         if ((vbytevdg & 0x0002) == 0x02)
-            printf(" Touch Module... Found.\n\n");
+            printf(" Touch Module... Found.\n");
         else
-            printf(" Touch Module... NOT Found.\n\n");
+            printf(" Touch Module... NOT Found.\n");
     #endif
 
     printf("Initializing FileSystem... ");
@@ -207,21 +244,33 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     interrupts_init();
     TFT_EN_INT();
+    USB_EN_INIT();
 
     if (vbytepic != RETURN_OK) 
     {
         if (vbytepic == ERRO_B_OPEN_DISK)
-            printf("\nError Mounting Disk. Can't Initialize (%d).\n\n", vbytepic);
+            printf("\nError Mounting Disk. Can't Initialize (%d).\n", vbytepic);
         else
-            printf("\nError Mounting Disk. Can't Read (%d).\n\n", vbytepic);
+            printf("\nError Mounting Disk. Can't Read (%d).\n", vbytepic);
     } 
     else
-        printf("Done.\n\n");
+        printf("Done.\n");
+
+    /* Initialize USB system we will want keyboard and mouse */
+    UsbInitialise();
+
+    /* Display the USB tree */
+    UsbShowTree(UsbGetRootHub(), 1, '+');
+    printf("\n");
+
+    /* Detect the first keyboard on USB bus */
+    uint8_t firstKbd = 0;
 
     // Inicio SO
     *vdiratup++ = '/';
     *vdiratup = '\0';
 
+    printf("\n");
     putPrompt(noaddline);
 
     #ifdef __USE_TFT_VDG__
@@ -233,6 +282,42 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     // Loop principal
     while (1) {
+        UsbCheckForChange();
+
+        if (!firstKbd)
+        {
+            for (int i = 1; i <= MaximumDevices; i++) 
+            {
+                if (IsKeyboard(i)) 
+                {
+                    firstKbd = i;
+                    break;
+                }
+            }
+            
+            if (firstKbd) 
+            {
+                printf("Keyboard detected\n");
+                putPrompt(noaddline);
+            }
+        }
+
+        if (firstKbd) 
+        {
+            RESULT status;
+            uint8_t buf[8];
+            status = HIDReadReport(firstKbd, 0, (uint16_t)USB_HID_REPORT_TYPE_INPUT << 8 | 0, &buf[0], 8);
+            if (status == OK)
+            {
+                printf("HID KBD REPORT: Byte1: 0x%02x Byte2: 0x%02x, Byte3: 0x%02x, Byte4: 0x%02x\n",
+                    buf[0], buf[1], buf[2], buf[3]);
+                printf("                Byte5: 0x%02x Byte6: 0x%02x, Byte7: 0x%02x, Byte8: 0x%02x\n",
+                    buf[4], buf[5], buf[6], buf[7]);
+            }
+            else printf("Status error: %08x\n", status);
+            putPrompt(noaddline);
+        }
+
         #ifdef __USE_TFT_VDG__
             blinkCursor();
 
@@ -431,7 +516,7 @@ void processCmd(void) {
                 startMGI();
         }
         else if (!strcmp(linhacomando,"VER") && iy == 3) {
-            printf("MMSJ-OS v0.1\n");
+            printf("MMSJ-OS v%s\n", pVersionSO);
         }
         else if (!strcmp(linhacomando,"LS") && iy == 2) {
 //            clearScr(vcorb);
@@ -740,12 +825,12 @@ void processCmd(void) {
                 vretfat = ERRO_D_NOT_FOUND /*fsFindInDir(linhacomando, TYPE_FILE)*/ ;
                 if (vretfat <= ERRO_D_START) {
                     // Se tiver, carrega em 0x01000000 e executa
-                    loadFile((unsigned char*)linhacomando, (unsigned char*)0x00800000);
+                    loadFile((unsigned char*)linhacomando, (unsigned char*)vMemUserArea);
                     if (!verro)
                         runCmd();
                     else {
                         if (voutput == 1)
-                            writes("Loading File Error...\n\0", vcorf, vcorb);
+                            printf("Loading File Error...\n");
                         else {
                             message("Loading File Error...\0", BTCLOSE, 0);
                         }
@@ -756,7 +841,7 @@ void processCmd(void) {
                 else {
                     // Se nao tiver, mostra erro
                     if (voutput == 1)
-                        writes("Invalid Command or File Name\n\0", vcorf, vcorb);
+                        printf("Invalid Command or File Name\n");
                     else {
                         message("Invalid Command or\nFile Name\0", BTCLOSE, 0);
                     }
@@ -770,7 +855,7 @@ void processCmd(void) {
                 }
 
                 if (((vpicret) && (vbytepic != RETURN_OK)) || ((!vpicret) && (vretfat != RETURN_OK))) {
-                    writes("Command unsuccessfully\n\0", vcorf, vcorb);
+                    printf("Command unsuccessfully\n\0");
                 }
                 else {
                     if (!strcmp(linhacomando,"CD")) {
@@ -805,9 +890,7 @@ void processCmd(void) {
                         }
 
                         vlinha[ix] = '\0';
-                        writes("  Date is \0", vcorf, vcorb);
-                        writes(vlinha, vcorf, vcorb);
-                        writes("\n\0", vcorf, vcorb);
+                        printf("  Date is %s\n", vlinha);
                     }
                     else if (!strcmp(linhacomando,"TIME")) {
                         for(ix = 0; ix <= 7; ix++) {
@@ -816,36 +899,32 @@ void processCmd(void) {
                         }
 
                         vlinha[ix] = '\0';
-                        writes("  Time is \0", vcorf, vcorb);
-                        writes(vlinha, vcorf, vcorb);
-                        writes("\n\0", vcorf, vcorb);
+                        printf("  Time is %n\n", vlinha);
                     }
                     else if (!strcmp(linhacomando,"IFCONFIG")) {
                         for(iy = 1; iy <= 5; iy++) {
-                            switch (iy) {
-                                case 1:
-                                    writes("    IP Addr: \0", vcorf, vcorb);
-                                    break;
-                                case 2:
-                                    writes("    SubMask: \0", vcorf, vcorb);
-                                    break;
-                                case 3:
-                                    writes("    Gateway: \0", vcorf, vcorb);
-                                    break;
-                                case 4:
-                                    writes("    DNS Prim: \0", vcorf, vcorb);
-                                    break;
-                                case 5:
-                                    writes("    DNS Sec: \0", vcorf, vcorb);
-                                    break;
-                            }
                             for(ix = 0; ix <= 14; ix++) {
                                 /* ver como fazer */
                                 vlinha[ix] = vbytepic;
                             }
                             vlinha[ix] = '\0';
-                            writes(vlinha, vcorf, vcorb);
-                            writes("\n\0", vcorf, vcorb);
+                            switch (iy) {
+                                case 1:
+                                    printf("    IP Addr: %s\n", vlinha);
+                                    break;
+                                case 2:
+                                    printf("    SubMask: %s\n", vlinha);
+                                    break;
+                                case 3:
+                                    printf("    Gateway: %s\n", vlinha);
+                                    break;
+                                case 4:
+                                    printf("   DNS Prim: %s\n", vlinha);
+                                    break;
+                                case 5:
+                                    printf("    DNS Sec: %s\n", vlinha);
+                                    break;
+                            }
                         }
                     }
 /*                    else if (!strcmp(linhacomando,"FORMAT")) {
@@ -883,9 +962,7 @@ void putPrompt(unsigned int plinadd) {
 
     locate(0,vlin, NOREPOS_CURSOR);
 
-    writes("#\0", vcorf, vcorb);
-    writes((char*)vdiratu, vcorf, vcorb);
-    writes(">\0", vcorf, vcorb);
+    printf("#%s>",(char*)vdiratu);
 
     vinip = vcol;
 }
@@ -3258,7 +3335,7 @@ void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) {
 void startMGI(void) {
     unsigned char vnomefile[12];
     unsigned char lc, ll, *ptr_ico, *ptr_prg, *ptr_pos;
-    unsigned char* vFinalOSPos;
+    unsigned char* vMemSystemAreaPos;
 
     #ifdef __USE_TFT_VDG__
         paramVDG[0] =  2;
@@ -3266,7 +3343,7 @@ void startMGI(void) {
         paramVDG[2] =  0;
         commVDG(paramVDG);    
 
-        ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
+        ptr_pos = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16));
         ptr_ico = ptr_pos + 32;
         ptr_prg = ptr_ico + 320;
 
@@ -3297,14 +3374,14 @@ void startMGI(void) {
         writesxy(94,166,8,"Please Wait...",vcorwf,vcorwb);
 
         writesxy(86,155,8,"Loading Config",vcorwf,vcorwb);
-        vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_MGICFG);
+        vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_MGICFG);
         _strcat(vnomefile,"MMSJMGI",".CFG");
-        loadFile(vnomefile, (unsigned char*)vFinalOSPos);
+        loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
 
         writesxy(86,155,8,"Loading Icons ",vcorwf,vcorwb);
-        vFinalOSPos = (unsigned char*)(vFinalOS + MEM_POS_ICONES);
+        vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_ICONES);
         _strcat(vnomefile,"MOREICON",".LIB");
-        loadFile(vnomefile, (unsigned char*)vFinalOSPos);
+        loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
 
         redrawMain();
 
@@ -3369,7 +3446,7 @@ void desenhaIconesUsuario(void) {
       
       next_pos = 0;
 
-      ptr_pos = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16));
+      ptr_pos = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16));
       ptr_ico = ptr_pos + 32;
       ptr_prg = ptr_ico + 320;
 
@@ -3411,7 +3488,7 @@ void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
     unsigned char *ptr_viconef;
 
     #ifdef __USE_TFT_VDG__
-        ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
+        ptr_prg = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16) + 32 + 320);
 
         // Procura Icone no Disco se Nao for Padrao
         if (vicone < 50) {
@@ -3426,7 +3503,7 @@ void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
 
         if (vicone >= 50) {
             vicone -= 50;
-            ptr_viconef = (unsigned char*)(vFinalOS + (MEM_POS_ICONES + (1152 * vicone)));
+            ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (1152 * vicone)));
         }
 
         // Mostra Icone
@@ -3476,7 +3553,7 @@ unsigned char editortela(void) {
                 cc++;
               }
 
-              ptr_prg = (unsigned char*)(vFinalOS + (MEM_POS_MGICFG + 16) + 32 + 320);
+              ptr_prg = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16) + 32 + 320);
               ptr_prg = ptr_prg + (vpos * 10);
 
               if (*ptr_prg != 0) {

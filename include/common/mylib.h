@@ -42,28 +42,5 @@ void gpioSetPull(int pin, int val);
 
 #define STR_GUARD 1024
 
-// Severity (change this before building if you want different values)
-//#define LOG_ERROR	1
-//#define LOG_WARNING	2x
-//#define LOG_NOTICE	3
-//#define LOG_DEBUG	4
-
-void LogWrite (const char *pSource,		// short name of module
-	       unsigned	   Severity,		// see above
-	       const char *pMessage, ...);	// uses printf format options
-
-//
-// Debug support
-//
-#ifndef NDEBUG
-
-// display "assertion failed" message and halt
-void uspi_assertion_failed (const char *pExpr, const char *pFile, unsigned nLine);
-
-// display hex dump (pSource can be 0)
-void DebugHexdump (const void *pBuffer, unsigned nBufLen, const char *pSource /* = 0 */);
-
-#endif
-
 #endif
 

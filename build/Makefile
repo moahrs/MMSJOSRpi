@@ -34,7 +34,7 @@ build-hardware: build
 
 build: $(OBJECTS) $(HEADERS)
 #	echo $(OBJECTS)
-	$(CC) -T linker.ld -o $(IMG_NAME).elf $(LFLAGS) $(OBJECTS)
+	$(CC) -T linker.ld -o $(IMG_NAME).elf $(LFLAGS) $(OBJECTS) $(LIBS)
 
 $(OBJ_DIR)/%.o: $(KER_SRC)/%.c
 	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -c $< -o $@ $(CSRCFLAGS)

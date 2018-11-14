@@ -35,7 +35,35 @@ typedef struct atag {
     };
 } atag_t;
 
+#define MBOX_GET_BOARD_MODEL 0x00010001
+#define MBOX_GET_BOARD_REVISION 0x00010002
+#define MBOX_GET_BOARD_MAC_ADDRESS 0x00010003
+#define MBOX_GET_BOARD_SERIAL 0x00010004
+#define MBOX_GET_ARM_MEMORY 0x00010005
+#define MBOX_GET_VC_MEMORY 0x00010006
+#define MBOX_GET_CLOCK_RATE 0x00030002
+#define MBOX_GET_MAX_CLOCK_RATE 0x00030004
+
+typedef struct 
+{
+    uint32_t size;
+    uint32_t start;
+    uint32_t modelrev;
+    uint64_t serial;
+    uint8_t byte00;
+    uint8_t byte01;
+    uint8_t byte02;
+    uint8_t byte03;
+    uint8_t byte04;
+    uint8_t byte05;
+    uint8_t byte06;
+    uint8_t byte07;
+    uint8_t resp;
+} mBoxInfoResp;
+
 extern uint32_t get_mem_size(atag_t * atags);
-extern unsigned long get_memory(unsigned long vFunc);
+extern mBoxInfoResp get_info_arm(unsigned long vFunc);
+extern uint32_t get_clock_hz(unsigned long vFunc);
+extern uint32_t set_clock_hz(unsigned long vclock);
 
 #endif
