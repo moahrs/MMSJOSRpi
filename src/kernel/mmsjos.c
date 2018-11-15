@@ -66,6 +66,7 @@
 #define __USE_TFT_VDG__
 //#define __USE_UART_MON__
 #define __USE_FAT32_SDDISK__
+//#define __USE_USB__
 
 #include <stddef.h>
 #include <stdint.h>
@@ -86,8 +87,9 @@
 #include <disk/diskio.h>
 #include "common/mylib.h"
 #include "drivers/rpi-usb-api.h"            // This units header
+#include <kernel/timer.h>
 
-unsigned char* pVersionSO = "0.1";
+unsigned char* pVersionSO = (unsigned char*)"0.1";
 
 unsigned int vcorwb;
 unsigned int vcorwf;
@@ -101,10 +103,13 @@ unsigned char arrvbufkptr[128];
 unsigned char arrvbuf[64];
 unsigned char arrmcfgfile[12288];
 unsigned long vtotclock;
+uint16_t vboardfirm;
 uint16_t vboardmodel;
 uint16_t vboardrev;
 uint8_t vboardmacaddr[8];
 uint16_t vboardserial;
+
+extern uint32_t RPI_ARM_CPU_ID;               // Raspberry Pi Zero W CPU ID
 
 mBoxInfoResp MBOX_INFO_BOARD;
 FAT32_DIR varToPtrvdir;
@@ -121,6 +126,7 @@ unsigned char vmesc[12][3] = {{'J','a','n'},{'F','e','b'},{'M','a','r'},
 
 int __locale_ctype_ptr(int return_value)
 {
+    (void)(return_value);
     return 0;
 }   
 
@@ -139,7 +145,9 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vtotmem = mem_init( /*(atag_t *)atags*/ );
 
     vtotclock = get_clock_hz(MBOX_GET_CLOCK_RATE);
- /*   MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_MODEL);
+    MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_FIRMWARE);
+    vboardfirm = MBOX_INFO_BOARD.modelrev;
+    MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_MODEL);
     vboardmodel = MBOX_INFO_BOARD.modelrev;
     MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_REVISION);
     vboardrev = MBOX_INFO_BOARD.modelrev;
@@ -150,12 +158,12 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     vboardmacaddr[3] = MBOX_INFO_BOARD.byte03;
     vboardmacaddr[4] = MBOX_INFO_BOARD.byte04;
     vboardmacaddr[5] = MBOX_INFO_BOARD.byte05;
-    vboardmacaddr[6] = MBOX_INFO_BOARD.byte06;
-    vboardmacaddr[7] = MBOX_INFO_BOARD.byte07;
     MBOX_INFO_BOARD = get_info_arm(MBOX_GET_BOARD_SERIAL);
-    vboardserial = MBOX_INFO_BOARD.serial;*/
+    vboardserial = MBOX_INFO_BOARD.serial;
 
     spi_man_init();
+
+    TIMER_INIT();
 
     #ifdef __USE_TFT_VDG__
         TFT_Init();
@@ -168,17 +176,18 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     #endif
 
     unsigned int vbytepic = 0, vbytevdg;
-    unsigned int ix = 0, vvcol = 0;
     unsigned char *vbufptr;
-    char *sqtdtam;
-    unsigned char vret;
 
-    gDataBuffer = &arrgDataBuffer;
-    vdiratu = &arrvdiratu;
-    vdiratup = &arrvdiratup;
-    vbufkptr = &arrvbufkptr;
-    vbuf = &arrvbuf;
-    mcfgfile = &arrmcfgfile;
+    #ifdef __USE_USB__
+        uint8_t firstKbd = 0;
+    #endif
+
+    gDataBuffer = (unsigned char*)&arrgDataBuffer;
+    vdiratu = (unsigned char*)&arrvdiratu;
+    vdiratup = (unsigned char*)&arrvdiratup;
+    vbufkptr = (unsigned char*)&arrvbufkptr;
+    vbuf = (unsigned char*)&arrvbuf;
+    mcfgfile = (unsigned char*)&arrmcfgfile;
     vbufptr = vbuf;
     *vbufptr = 0x00;
 
@@ -223,10 +232,12 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     printf("Running MMSJ-OS version %s\n", pVersionSO);
     printf(" Raspberry PI Zero W v1.1 at %d%sHz.\n", ((vtotclock >= 1000) ? (vtotclock / 1000) : vtotclock), ((vtotclock >= 1000) ? "G" : "M"));
-/*    printf("    Board Model %04x\n", vboardmodel);
-    printf("    Board Revision %04x\n", vboardrev);
-    printf("    Board MAC %02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x\n", vboardmacaddr[0], vboardmacaddr[1], vboardmacaddr[2], vboardmacaddr[3], vboardmacaddr[4], vboardmacaddr[5], vboardmacaddr[6], vboardmacaddr[7]);
-    printf("    Board Serial %08x\n", vboardserial);*/
+    printf("   ARM6 CPU ID %08x\n", RPI_ARM_CPU_ID);
+    printf("   Firmware %04x\n", vboardfirm);
+    printf("   Model %04x\n", vboardmodel);
+    printf("   Revision %04x\n", vboardrev);
+    printf("   MAC Address %02x.%02x.%02x.%02x.%02x.%02x\n", vboardmacaddr[0], vboardmacaddr[1], vboardmacaddr[2], vboardmacaddr[3], vboardmacaddr[4], vboardmacaddr[5]);
+    printf("   Serial %08x\n", vboardserial);
     printf(" Total Free Memory %dMB\n", vtotmem);
 
     #ifdef __USE_TFT_VDG__
@@ -244,7 +255,10 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     interrupts_init();
     TFT_EN_INT();
-    USB_EN_INIT();
+
+    #ifdef __USE_USB__
+        USB_EN_INT();
+    #endif
 
     if (vbytepic != RETURN_OK) 
     {
@@ -256,15 +270,17 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     else
         printf("Done.\n");
 
-    /* Initialize USB system we will want keyboard and mouse */
-    UsbInitialise();
+    #ifdef __USE_USB__
+        /* Initialize USB system we will want keyboard and mouse */
+        UsbInitialise();
 
-    /* Display the USB tree */
-    UsbShowTree(UsbGetRootHub(), 1, '+');
-    printf("\n");
+        /* Display the USB tree */
+        UsbShowTree(UsbGetRootHub(), 1, '+');
+        printf("\n");
+    #endif
 
-    /* Detect the first keyboard on USB bus */
-    uint8_t firstKbd = 0;
+    TIMER_EN_INT();
+    timer_set(1000);   // 1mS
 
     // Inicio SO
     *vdiratup++ = '/';
@@ -282,41 +298,42 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     // Loop principal
     while (1) {
-        UsbCheckForChange();
-
-        if (!firstKbd)
-        {
-            for (int i = 1; i <= MaximumDevices; i++) 
+        #ifdef __USE_USB__
+            /* Detect the first keyboard on USB bus */
+            if (!firstKbd)
             {
-                if (IsKeyboard(i)) 
+                for (int i = 1; i <= MaximumDevices; i++) 
                 {
-                    firstKbd = i;
-                    break;
+                    if (IsKeyboard(i)) 
+                    {
+                        firstKbd = i;
+                        break;
+                    }
+                }
+                
+                if (firstKbd) 
+                {
+                    printf("Keyboard detected\n");
+                    putPrompt(noaddline);
                 }
             }
-            
+
             if (firstKbd) 
             {
-                printf("Keyboard detected\n");
+                RESULT status;
+                uint8_t buf[8];
+                status = HIDReadReport(firstKbd, 0, (uint16_t)USB_HID_REPORT_TYPE_INPUT << 8 | 0, &buf[0], 8);
+                if (status == OK)
+                {
+                    printf("HID KBD REPORT: Byte1: 0x%02x Byte2: 0x%02x, Byte3: 0x%02x, Byte4: 0x%02x\n",
+                        buf[0], buf[1], buf[2], buf[3]);
+                    printf("                Byte5: 0x%02x Byte6: 0x%02x, Byte7: 0x%02x, Byte8: 0x%02x\n",
+                        buf[4], buf[5], buf[6], buf[7]);
+                }
+                else printf("Status error: %08x\n", status);
                 putPrompt(noaddline);
             }
-        }
-
-        if (firstKbd) 
-        {
-            RESULT status;
-            uint8_t buf[8];
-            status = HIDReadReport(firstKbd, 0, (uint16_t)USB_HID_REPORT_TYPE_INPUT << 8 | 0, &buf[0], 8);
-            if (status == OK)
-            {
-                printf("HID KBD REPORT: Byte1: 0x%02x Byte2: 0x%02x, Byte3: 0x%02x, Byte4: 0x%02x\n",
-                    buf[0], buf[1], buf[2], buf[3]);
-                printf("                Byte5: 0x%02x Byte6: 0x%02x, Byte7: 0x%02x, Byte8: 0x%02x\n",
-                    buf[4], buf[5], buf[6], buf[7]);
-            }
-            else printf("Status error: %08x\n", status);
-            putPrompt(noaddline);
-        }
+        #endif
 
         #ifdef __USE_TFT_VDG__
             blinkCursor();
@@ -437,12 +454,12 @@ void funcKey(unsigned char vambiente, unsigned char vshow, unsigned char venter,
 
 //-----------------------------------------------------------------------------
 void processCmd(void) {
-    char linhacomando[32], linhaarg[32], vloop;
+    char linhacomando[32], linhaarg[32];
     unsigned char *blin = (unsigned char*)vbuf, vbuffer[128];
     char vlinha[40];
-    unsigned int varg = 0, vcrc, vcrcpic;
+    unsigned int varg = 0;
     unsigned int ix, iy, iz = 0, ikk = 0;
-    unsigned int vbytepic = 0, vrecfim;
+    unsigned int vbytepic = 0;
     unsigned char *vdirptr = (unsigned char*)&vdir;
     unsigned char cuntam, vparam[32], vparam2[16], vpicret;
     char *sqtdtam;
@@ -530,8 +547,8 @@ void processCmd(void) {
             else {
                 printf("\n");
                 while (1) {
-					if (vdir->Attr != ATTR_VOLUME && vdir->Attr != ATTR_LONG_NAME) {
-    					memset(vbuffer, 0x0, 128);
+                    if (vdir->Attr != ATTR_VOLUME && vdir->Attr != ATTR_LONG_NAME) {
+                        memset(vbuffer, 0x0, 128);
                         vdirptr = (unsigned char*)&vdir;
 
                         for(ix = 40; ix <= 79; ix++)
@@ -557,7 +574,7 @@ void processCmd(void) {
                                 cuntam = ' ';
 
                             // Transforma para decimal
-        					memset(sqtdtam, 0x0, 10);
+                            memset(sqtdtam, 0x0, 10);
                             itoa(vqtdtam, sqtdtam, 10);
 
                             // Primeira Parte da Linha do dir, tamanho
@@ -604,7 +621,7 @@ void processCmd(void) {
 
                         // Dia
                         vqtdtam = vdir->UpdateDate & 0x001F;
-      					memset(sqtdtam, 0x0, 10);
+                        memset(sqtdtam, 0x0, 10);
                         itoa(vqtdtam, sqtdtam, 10);
 
                         if (vqtdtam < 10) {
@@ -619,7 +636,7 @@ void processCmd(void) {
 
                         // Ano
                         vqtdtam = ((vdir->UpdateDate & 0xFE00) >> 9) + 1980;
-      					memset(sqtdtam, 0x0, 10);
+                        memset(sqtdtam, 0x0, 10);
                         itoa(vqtdtam, sqtdtam, 10);
 
                         vbuffer[13] = sqtdtam[0];
@@ -664,24 +681,24 @@ void processCmd(void) {
 
                         for(ix = 0; ix <= 39; ix++)
                             vlinha[ix] = vbuffer[ix];
-					}
-					else if (vdir->Attr == ATTR_VOLUME) {
-      					memset(vlinha, 0x20, 40);
-					    vlinha[5]  = 'D';
-					    vlinha[6]  = 'i';
-					    vlinha[7]  = 's';
-					    vlinha[8]  = 'k';
-					    vlinha[9]  = ' ';
-					    vlinha[10] = 'N';
-					    vlinha[11] = 'a';
-					    vlinha[12] = 'm';
-					    vlinha[13] = 'e';
-					    vlinha[14] = ' ';
-					    vlinha[15] = 'i';
-					    vlinha[16] = 's';
-					    vlinha[17] = ' ';
-					    ix = 18;
-					    varg = 0;
+                    }
+                    else if (vdir->Attr == ATTR_VOLUME) {
+                        memset(vlinha, 0x20, 40);
+                        vlinha[5]  = 'D';
+                        vlinha[6]  = 'i';
+                        vlinha[7]  = 's';
+                        vlinha[8]  = 'k';
+                        vlinha[9]  = ' ';
+                        vlinha[10] = 'N';
+                        vlinha[11] = 'a';
+                        vlinha[12] = 'm';
+                        vlinha[13] = 'e';
+                        vlinha[14] = ' ';
+                        vlinha[15] = 'i';
+                        vlinha[16] = 's';
+                        vlinha[17] = ' ';
+                        ix = 18;
+                        varg = 0;
                         while (vdir->Name[varg] != 0x00 && varg <= 7) {
                             vlinha[ix] = vdir->Name[varg];
                             ix++;
@@ -696,7 +713,7 @@ void processCmd(void) {
                         }
 
                         vlinha[ix] = '\0';
-					}
+                    }
                     else {
                         vlinha[0] = '\0';
                     }
@@ -708,34 +725,34 @@ void processCmd(void) {
                     }
 
                     // Verifica se Tem mais arquivos no diretorio
-					for (ix = 0; ix <= 7; ix++) {
-					    vparam[ix] = vdir->Name[ix];
-						if (vparam[ix] == 0x20) {
-							vparam[ix] = '\0';
-							break;
-					    }
-					}
+                    for (ix = 0; ix <= 7; ix++) {
+                        vparam[ix] = vdir->Name[ix];
+                        if (vparam[ix] == 0x20) {
+                            vparam[ix] = '\0';
+                            break;
+                        }
+                    }
 
-					vparam[ix] = '\0';
+                    vparam[ix] = '\0';
 
-					if (vdir->Name[0] != '.') {
-					    vparam[ix] = '.';
-					    ix++;
-    					for (iy = 0; iy <= 2; iy++) {
-    					    vparam[ix] = vdir->Ext[iy];
-    						if (vparam[ix] == 0x20) {
-    							vparam[ix] = '\0';
-    							break;
-    					    }
-    					    ix++;
-    					}
-						vparam[ix] = '\0';
-					}
+                    if (vdir->Name[0] != '.') {
+                        vparam[ix] = '.';
+                        ix++;
+                        for (iy = 0; iy <= 2; iy++) {
+                            vparam[ix] = vdir->Ext[iy];
+                            if (vparam[ix] == 0x20) {
+                                vparam[ix] = '\0';
+                                break;
+                            }
+                            ix++;
+                        }
+                        vparam[ix] = '\0';
+                    }
 
-    				if (fsFindInDir((char*)vparam, TYPE_NEXT_ENTRY) >= ERRO_D_START) {
+                    if (fsFindInDir((char*)vparam, TYPE_NEXT_ENTRY) >= ERRO_D_START) {
                         printf("\n", vcorf, vcorb);
-    					break;
-    				}
+                        break;
+                    }
                 }
             }
         }
@@ -747,22 +764,22 @@ void processCmd(void) {
                 vretfat = fsRenameFile((char*)vparam, (char*)vparam2);
             }
             else if (!strcmp(linhacomando,"CP") && iy == 2) {
-      			ikk = 0;
+                ikk = 0;
 
-          		if (fsOpenFile((char*)vparam) != RETURN_OK) {
+                if (fsOpenFile((char*)vparam) != RETURN_OK) {
                     vretfat = ERRO_B_NOT_FOUND;
                 }
                 else {
-              		if (fsOpenFile((char*)vparam2) != RETURN_OK) {
-            			if (fsCreateFile((char*)vparam2) != RETURN_OK) {
+                    if (fsOpenFile((char*)vparam2) != RETURN_OK) {
+                        if (fsCreateFile((char*)vparam2) != RETURN_OK) {
                               vretfat = ERRO_B_CREATE_FILE;
                         }
                     }
                 }
 
                 while (vretfat == RETURN_OK) {
-          			if (fsReadFile((char*)vparam, ikk, vbuffer, 128) > 0) {
-        				if (fsWriteFile((char*)vparam2, ikk, vbuffer, 128) != RETURN_OK) {
+                    if (fsReadFile((char*)vparam, ikk, vbuffer, 128) > 0) {
+                        if (fsWriteFile((char*)vparam2, ikk, vbuffer, 128) != RETURN_OK) {
                             vretfat = ERRO_B_WRITE_FILE;
                             break;
                         }
@@ -942,8 +959,6 @@ void processCmd(void) {
 
 //-----------------------------------------------------------------------------
 void clearScr(unsigned int pcolor) {
-    unsigned char ix, iy;
-
     #ifdef __USE_TFT_VDG__
         paramVDG[0] = 3;
         paramVDG[1] = 0xD0;
@@ -993,9 +1008,9 @@ void verifyMGI(void) {
 }
 
 //-----------------------------------------------------------------------------
-void writechar(int c, void *stream)
+void writechar(int c)
 {
-    writec((char*)c, vcorf, vcorb, ADD_POS_SCR);
+    writec((unsigned char)c, vcorf, vcorb, ADD_POS_SCR);
 }
 
 //-----------------------------------------------------------------------------
@@ -1018,72 +1033,77 @@ void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
             xbcolor = vcorwb;
         }
 
-        while (*ss) {
-          if (*ss >= 0x20)
-              ix++;
-          else
-              ichange = 1;
-
-          if ((vcol + (ix - 10)) > vxmax)
-              ichange = 2;
-
-          ss++;
-
-          if (!*ss && !ichange)
-             ichange = 3;
-
-          if (ichange) {
-             // Manda Sequencia de Controle
-             if (ix > 10) {
-                paramVDG[0] = ix;
-                paramVDG[1] = 0xD1;
-                paramVDG[2] = ((vcol * 8) + voverx) >> 8;
-                paramVDG[3] = (vcol * 8) + voverx;
-                paramVDG[4] = ((vlin * 10) + vovery) >> 8;
-                paramVDG[5] = (vlin * 10) + vovery;
-                paramVDG[6] = 8;
-                paramVDG[7] = xcolor >> 8;
-                paramVDG[8] = xcolor;
-                paramVDG[9] = xbcolor >> 8;
-                paramVDG[10] = xbcolor;
-             }
-
-             if (ichange == 1)
+        while (*ss) 
+        {
+            if (*ss >= 0x20)
                 ix++;
+            else
+                ichange = 1;
 
-             iy = 11;
-             while (*msgs && iy <= ix) {
-                if (*msgs >= 0x20 && *msgs <= 0x7F) {
-                    paramVDG[iy] = *msgs;
-                    paramVDG[iy + 1] = '\0';
-                    vcol = vcol + 1;
+            if ((vcol + (ix - 10)) > vxmax)
+                ichange = 2;
+
+            ss++;
+
+            if (!*ss && !ichange)
+                ichange = 3;
+
+            if (ichange) 
+            {
+                // Manda Sequencia de Controle
+                if (ix > 10) {
+                    paramVDG[0] = ix;
+                    paramVDG[1] = 0xD1;
+                    paramVDG[2] = ((vcol * 8) + voverx) >> 8;
+                    paramVDG[3] = (vcol * 8) + voverx;
+                    paramVDG[4] = ((vlin * 10) + vovery) >> 8;
+                    paramVDG[5] = (vlin * 10) + vovery;
+                    paramVDG[6] = 8;
+                    paramVDG[7] = xcolor >> 8;
+                    paramVDG[8] = xcolor;
+                    paramVDG[9] = xbcolor >> 8;
+                    paramVDG[10] = xbcolor;
                 }
-                else {
-                    if (*msgs == 0x0D) {
-                        vcol = 0;
+
+                if (ichange == 1)
+                    ix++;
+
+                iy = 11;
+                while (*msgs && iy <= ix) {
+                    if (*msgs >= 0x20 && *msgs <= 0x7F) {
+                        paramVDG[iy] = *msgs;
+                        paramVDG[iy + 1] = '\0';
+                        vcol = vcol + 1;
                     }
-                    else if (*msgs == 0x0A) {
-                        vcol = 0;  // So para teste, depois tiro e coloco '\r' junto com '\n'
-                        vlin = vlin + 1;
+                    else {
+                        if (*msgs == 0x0D) {
+                            vcol = 0;
+                        }
+                        else if (*msgs == 0x0A) {
+                            vcol = 0;  // So para teste, depois tiro e coloco '\r' junto com '\n'
+                            vlin = vlin + 1;
+                        }
                     }
 
+                    msgs++;
+                    iy++;
+                }
+
+                commVDG(paramVDG);
+
+                if (vcol <= vxmax )
                     locate(vcol, vlin, NOREPOS_CURSOR);
+
+                if (ichange == 2)
+                {
+                     vcol = 0;
+                     vlin++;
+                     locate(vcol, vlin, NOREPOS_CURSOR);
                 }
 
-                msgs++;
-                iy++;
+                ichange = 0;
+                ix = 10;
             }
-            commVDG(paramVDG);
-
-            if (ichange == 2) {
-                vcol = 0;
-                vlin++;
-                locate(vcol, vlin, NOREPOS_CURSOR);
-            }
-
-            ichange = 0;
-            ix = 10;
-          }
         }
     #endif
 
@@ -1104,7 +1124,7 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
             xbcolor = vcorwb;
         }
 
-        if (pbyte != '\n')
+        if (pbyte != '\n' && pbyte != '\r')
         {
             paramVDG[0] = 0x0B;
             paramVDG[1] = 0xD2;
@@ -1131,7 +1151,13 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
                 locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
             }
         }
-        else
+        else if (pbyte == '\r')
+        {
+            vcol = 0;
+
+            locate(vcol, vlin, REPOS_CURSOR_ON_CHANGE);
+        }
+        else if (pbyte == '\n')
         {
             vlin++;
             vcol = 0;
@@ -1147,10 +1173,7 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
 
 //-----------------------------------------------------------------------------
 void locate(unsigned char pcol, unsigned char plin, unsigned char pcur) {
-    unsigned int vend, ix, iy, ichange = 0;
-    unsigned int vlcdf[16];
-    unsigned int vbytepic = 0;
-    unsigned int ij, ik;
+    unsigned int ichange = 0;
 
     #ifdef __USE_TFT_VDG__
         if (pcol > vxmax) {
@@ -1194,34 +1217,32 @@ void locate(unsigned char pcol, unsigned char plin, unsigned char pcur) {
 //-----------------------------------------------------------------------------
 unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress)
 {
-    unsigned short cc, dd;
+    unsigned short dd;
     unsigned char vbuffer[128];
     unsigned char vbytegrava = 0;
-    unsigned short xdado = 0, xcounter = 0;
-    unsigned short vcrc, vcrcpic, vloop;
     unsigned long vsizeR, vsizefile = 0;
 
-	vsizefile = 0;
+    vsizefile = 0;
     verro = 0;
 
     if (fsOpenFile((char*)parquivo) == RETURN_OK) {
-		while (1) {
-			vsizeR = fsReadFile((char*)parquivo, vsizefile, vbuffer, 128);
+        while (1) {
+            vsizeR = fsReadFile((char*)parquivo, vsizefile, vbuffer, 128);
 
-			if (vsizeR != 0) {
+            if (vsizeR != 0) {
                 for (dd = 00; dd <= 127; dd += 1){
-                	vbytegrava = vbuffer[dd];
+                    vbytegrava = vbuffer[dd];
                     *xaddress++ = vbytegrava;
                 }
 
                 vsizefile += 128;
-			}
-			else
-				break;
-		}
+            }
+            else
+                break;
+        }
 
         // Fecha o Arquivo
-    	fsCloseFile((char*)parquivo, 0);
+        fsCloseFile((char*)parquivo, 0);
     }
     else
         verro = 1;
@@ -1231,8 +1252,8 @@ unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress)
 
 //-----------------------------------------------------------------------------
 unsigned char loadCFG(unsigned char ptipo) {
-    unsigned char vret = 1, vset[40], vparam[40], vigual, ipos, iy, iz;
-    unsigned int ix, vval, vdec;
+    unsigned char vret = 1, vset[40], vparam[40], vigual, ipos;
+    unsigned int ix, vval;
     unsigned char *mcfgfileptr = (unsigned char*)mcfgfile, varquivo[12];
 
     strcpy((char*)varquivo,"MMSJCFG.INI");
@@ -1328,7 +1349,6 @@ unsigned char loadCFG(unsigned char ptipo) {
 
 //-----------------------------------------------------------------------------
 void catFile(unsigned char *parquivo) {
-    unsigned int vbytepic;
     unsigned char *mcfgfileptr = (unsigned char*)mcfgfile, vqtd = 1;
     unsigned char *parqptr = (unsigned char*)parquivo;
     unsigned long vsizefile;
@@ -1380,7 +1400,9 @@ unsigned char fsMountDisk(void)
 
     //  mailbox_emmc_clock(1);
     
+//    extDebugActiv = 1;
     sta = disk_initialize(diskDrv);
+//    extDebugActiv = 0;
     if (sta & STA_NOINIT) {
         return ERRO_B_OPEN_DISK;
     }
@@ -1457,28 +1479,28 @@ unsigned long fsGetClusterDir (void) {
 //-------------------------------------------------------------------------
 unsigned char fsCreateFile(char * vfilename)
 {
-	// Verifica ja existe arquivo com esse nome
-	if (fsFindInDir(vfilename, TYPE_ALL) < ERRO_D_START)
-		return ERRO_B_FILE_FOUND;
+    // Verifica ja existe arquivo com esse nome
+    if (fsFindInDir(vfilename, TYPE_ALL) < ERRO_D_START)
+        return ERRO_B_FILE_FOUND;
 
-	// Cria o arquivo com o nome especificado
-	if (fsFindInDir(vfilename, TYPE_CREATE_FILE) >= ERRO_D_START)
-		return ERRO_B_CREATE_FILE;
+    // Cria o arquivo com o nome especificado
+    if (fsFindInDir(vfilename, TYPE_CREATE_FILE) >= ERRO_D_START)
+        return ERRO_B_CREATE_FILE;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsOpenFile(char * vfilename)
 {
-	unsigned int vdirdate, vbytepic;
-	unsigned char ds1307[7], ix, vlinha[12], vtemp[5];
+    unsigned int vdirdate;
+    unsigned char ds1307[7], vlinha[12], vtemp[5];
 
-	// Abre o arquivo especificado
-	if (fsFindInDir(vfilename, TYPE_FILE) >= ERRO_D_START)
-		return ERRO_B_FILE_NOT_FOUND;
+    // Abre o arquivo especificado
+    if (fsFindInDir(vfilename, TYPE_FILE) >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;
 
-	// Ler Data/Hora do PIC
+    // Ler Data/Hora do PIC
     /* ver como fazer
     sendPic(2);
     sendPic(picDOScmd);
@@ -1504,28 +1526,28 @@ unsigned char fsOpenFile(char * vfilename)
     vtemp[4] = '\0';
     ds1307[5] = atoi((char*)vtemp);
 
-	// Converte para a Data/Hora da FAT32
-	vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+    // Converte para a Data/Hora da FAT32
+    vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
 
-	// Grava nova data no lastaccess
-	vdir->LastAccessDate  = vdirdate;
+    // Grava nova data no lastaccess
+    vdir->LastAccessDate  = vdirdate;
 
-	if (fsUpdateDir() != RETURN_OK)
-		return ERRO_B_UPDATE_DIR;
+    if (fsUpdateDir() != RETURN_OK)
+        return ERRO_B_UPDATE_DIR;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 
 //-------------------------------------------------------------------------
 unsigned char fsCloseFile(char * vfilename, unsigned char vupdated)
 {
-	unsigned int vdirdate, vdirtime, vbytepic;
-	unsigned char ds1307[7], vtemp[5], ix, vlinha[12];
+    unsigned int vdirdate, vdirtime;
+    unsigned char ds1307[7], vtemp[5], vlinha[12];
 
-	if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
-		if (vupdated) {
-			// Ler Data/Hora do DS1307 - I2C
+    if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
+        if (vupdated) {
+            // Ler Data/Hora do DS1307 - I2C
             /* ver como fazer
             sendPic(2);
             sendPic(picDOScmd);
@@ -1574,111 +1596,111 @@ unsigned char fsCloseFile(char * vfilename, unsigned char vupdated)
             vtemp[2] = '\0';
             ds1307[2] = atoi((char*)vtemp);
 
-			// Converte para a Data/Hora da FAT32
-			vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
-			vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+            // Converte para a Data/Hora da FAT32
+            vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
+            vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
 
-			// Grava nova data no lastaccess e nova data/hora no update date/time
-			vdir->LastAccessDate  = vdirdate;
-			vdir->UpdateTime = vdirtime;
-			vdir->UpdateDate = vdirdate;
+            // Grava nova data no lastaccess e nova data/hora no update date/time
+            vdir->LastAccessDate  = vdirdate;
+            vdir->UpdateTime = vdirtime;
+            vdir->UpdateDate = vdirdate;
 
-			if (fsUpdateDir() != RETURN_OK)
-				return ERRO_B_UPDATE_DIR;
-		}
-	}
-	else
-		return ERRO_B_NOT_FOUND;
+            if (fsUpdateDir() != RETURN_OK)
+                return ERRO_B_UPDATE_DIR;
+        }
+    }
+    else
+        return ERRO_B_NOT_FOUND;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned long fsInfoFile(char * vfilename, unsigned char vtype)
 {
-	unsigned long vinfo = ERRO_D_NOT_FOUND, vtemp;
+    unsigned long vinfo = ERRO_D_NOT_FOUND, vtemp;
 
-	// retornar as informa?es conforme solicitado.
-	if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
-		switch (vtype) {
-			case INFO_SIZE:
-				vinfo = vdir->Size;
-				break;
-			case INFO_CREATE:
-			    vtemp = (vdir->CreateDate << 16) | vdir->CreateTime;
-				vinfo = (vtemp);
-				break;
-			case INFO_UPDATE:
-			    vtemp = (vdir->UpdateDate << 16) | vdir->UpdateTime;
-				vinfo = (vtemp);
-				break;
-			case INFO_LAST:
-				vinfo = vdir->LastAccessDate;
-				break;
-		}
-	}
-	else
-		return ERRO_D_NOT_FOUND;
+    // retornar as informa?es conforme solicitado.
+    if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
+        switch (vtype) {
+            case INFO_SIZE:
+                vinfo = vdir->Size;
+                break;
+            case INFO_CREATE:
+                vtemp = (vdir->CreateDate << 16) | vdir->CreateTime;
+                vinfo = (vtemp);
+                break;
+            case INFO_UPDATE:
+                vtemp = (vdir->UpdateDate << 16) | vdir->UpdateTime;
+                vinfo = (vtemp);
+                break;
+            case INFO_LAST:
+                vinfo = vdir->LastAccessDate;
+                break;
+        }
+    }
+    else
+        return ERRO_D_NOT_FOUND;
 
-	return vinfo;
+    return vinfo;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsDelFile(char * vfilename)
 {
-	// Apaga o arquivo solicitado
-	if (fsFindInDir(vfilename, TYPE_DEL_FILE) >= ERRO_D_START)
-		return ERRO_B_APAGAR_ARQUIVO;
+    // Apaga o arquivo solicitado
+    if (fsFindInDir(vfilename, TYPE_DEL_FILE) >= ERRO_D_START)
+        return ERRO_B_APAGAR_ARQUIVO;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsRenameFile(char * vfilename, char * vnewname)
 {
-	unsigned long vclusterfile;
-	unsigned int ikk;
-	unsigned char ixx, iyy;
+    unsigned long vclusterfile;
+    unsigned int ikk;
+    unsigned char ixx, iyy;
 
-	// Verificar se nome j?nao existe
-	vclusterfile = fsFindInDir(vnewname, TYPE_ALL);
+    // Verificar se nome j?nao existe
+    vclusterfile = fsFindInDir(vnewname, TYPE_ALL);
 
-	if (vclusterfile < ERRO_D_START)
-		return ERRO_B_FILE_FOUND;
+    if (vclusterfile < ERRO_D_START)
+        return ERRO_B_FILE_FOUND;
 
-	// Procura arquivo a ser renomeado
-	vclusterfile = fsFindInDir(vfilename, TYPE_FILE);
+    // Procura arquivo a ser renomeado
+    vclusterfile = fsFindInDir(vfilename, TYPE_FILE);
 
-	if (vclusterfile >= ERRO_D_START)
-		return ERRO_B_FILE_NOT_FOUND;
+    if (vclusterfile >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;
 
-	// Altera nome na estrutura vdir
-	memset(vdir->Name, 0x20, 8);
-	memset(vdir->Ext, 0x20, 3);
+    // Altera nome na estrutura vdir
+    memset(vdir->Name, 0x20, 8);
+    memset(vdir->Ext, 0x20, 3);
 
-	iyy = 0;
-	for (ixx = 0; ixx <= strlen(vnewname); ixx++) {
-		if (vnewname[ixx] == '\0')
-			break;
-		else if (vnewname[ixx] == '.')
-			iyy = 8;
-		else {
-			if (iyy <= 7)
-				vdir->Name[iyy] = vnewname[ixx];
-			else {
-			    ikk = iyy - 8;
-				vdir->Ext[ikk] = vnewname[ixx];
-			}
+    iyy = 0;
+    for (ixx = 0; ixx <= strlen(vnewname); ixx++) {
+        if (vnewname[ixx] == '\0')
+            break;
+        else if (vnewname[ixx] == '.')
+            iyy = 8;
+        else {
+            if (iyy <= 7)
+                vdir->Name[iyy] = vnewname[ixx];
+            else {
+                ikk = iyy - 8;
+                vdir->Ext[ikk] = vnewname[ixx];
+            }
 
-			iyy++;
-		}
-	}
+            iyy++;
+        }
+    }
 
-	// Altera o nome, as demais informacoes nao alteram
-	if (fsUpdateDir() != RETURN_OK)
-		return ERRO_B_UPDATE_DIR;
+    // Altera o nome, as demais informacoes nao alteram
+    if (fsUpdateDir() != RETURN_OK)
+        return ERRO_B_UPDATE_DIR;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
@@ -1686,91 +1708,91 @@ unsigned char fsRenameFile(char * vfilename, char * vnewname)
 //-------------------------------------------------------------------------
 unsigned char fsRWFile(unsigned long vclusterini, unsigned long voffset, unsigned char *buffer, unsigned char vtype)
 {
-	unsigned long vdata, vclusternew, vfat;
-	unsigned int vpos, vsecfat, voffsec, voffclus, vtemp1, vtemp2, ikk, ikj;
+    unsigned long vdata, vclusternew, vfat;
+    unsigned int vpos, vsecfat, voffsec, voffclus, vtemp1, vtemp2, ikk;
 
-	// Calcula offset de setor e cluster
-	voffsec = voffset / vdisk->sectorSize;
-	voffclus = voffsec / vdisk->SecPerClus;
-	vclusternew = vclusterini;
+    // Calcula offset de setor e cluster
+    voffsec = voffset / vdisk->sectorSize;
+    voffclus = voffsec / vdisk->SecPerClus;
+    vclusternew = vclusterini;
 
-	// Procura o cluster onde esta o setor a ser lido
-	for (vpos = 0; vpos < voffclus; vpos++) {
-		// Em operacao de escrita, como vai mexer com disco, salva buffer no setor de swap
-		if (vtype == OPER_WRITE) {
-		    ikk = vdisk->fat - 1;
-			if (!fsSectorWrite(ikk, buffer, FALSE))
-				return ERRO_B_READ_DISK;
-		}
+    // Procura o cluster onde esta o setor a ser lido
+    for (vpos = 0; vpos < voffclus; vpos++) {
+        // Em operacao de escrita, como vai mexer com disco, salva buffer no setor de swap
+        if (vtype == OPER_WRITE) {
+            ikk = vdisk->fat - 1;
+            if (!fsSectorWrite(ikk, buffer, FALSE))
+                return ERRO_B_READ_DISK;
+        }
 
-		vclusternew = fsFindNextCluster(vclusterini, NEXT_FIND);
+        vclusternew = fsFindNextCluster(vclusterini, NEXT_FIND);
 
-		// Se for leitura e o offset der dentro do ultimo cluster, sai
-		if (vtype == OPER_READ && vclusternew == LAST_CLUSTER_FAT32)
-			return RETURN_OK;
+        // Se for leitura e o offset der dentro do ultimo cluster, sai
+        if (vtype == OPER_READ && vclusternew == LAST_CLUSTER_FAT32)
+            return RETURN_OK;
 
-		// Se for gravacao e o offset der dentro do ultimo cluster, cria novo cluster
-		if ((vtype == OPER_WRITE || vtype == OPER_READWRITE) && vclusternew == LAST_CLUSTER_FAT32) {
-			// Calcula novo cluster livre
-			vclusternew = fsFindClusterFree(FREE_USE);
+        // Se for gravacao e o offset der dentro do ultimo cluster, cria novo cluster
+        if ((vtype == OPER_WRITE || vtype == OPER_READWRITE) && vclusternew == LAST_CLUSTER_FAT32) {
+            // Calcula novo cluster livre
+            vclusternew = fsFindClusterFree(FREE_USE);
 
-			if (vclusternew == ERRO_D_DISK_FULL)
-				return ERRO_B_DISK_FULL;
+            if (vclusternew == ERRO_D_DISK_FULL)
+                return ERRO_B_DISK_FULL;
 
-			// Procura Cluster atual para altera?o
-			vsecfat = vclusterini / 128;
-			vfat = vdisk->fat + vsecfat;
+            // Procura Cluster atual para altera?o
+            vsecfat = vclusterini / 128;
+            vfat = vdisk->fat + vsecfat;
 
-			if (!fsSectorRead(vfat, gDataBuffer))
-				return ERRO_B_READ_DISK;
+            if (!fsSectorRead(vfat, gDataBuffer))
+                return ERRO_B_READ_DISK;
 
-			// Grava novo cluster no cluster atual
-			vpos = (vclusterini - (128 * vsecfat)) * 4;
-			gDataBuffer[vpos] = (unsigned char)(vclusternew & 0xFF);
-			ikk = vpos + 1;
-			gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x100) & 0xFF);
-			ikk = vpos + 2;
-			gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x10000) & 0xFF);
-			ikk = vpos + 3;
-			gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x1000000) & 0xFF);
+            // Grava novo cluster no cluster atual
+            vpos = (vclusterini - (128 * vsecfat)) * 4;
+            gDataBuffer[vpos] = (unsigned char)(vclusternew & 0xFF);
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x100) & 0xFF);
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x10000) & 0xFF);
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x1000000) & 0xFF);
 
-			if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
-				return ERRO_B_WRITE_DISK;
-		}
+            if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                return ERRO_B_WRITE_DISK;
+        }
 
-		vclusterini = vclusternew;
+        vclusterini = vclusternew;
 
-		// Em operacao de escrita, como mexeu com disco, le o buffer salvo no setor swap
-		if (vtype == OPER_WRITE) {
-		    ikk = vdisk->fat - 1;
-			if (!fsSectorRead(ikk, buffer))
-				return ERRO_B_READ_DISK;
-		}
-	}
+        // Em operacao de escrita, como mexeu com disco, le o buffer salvo no setor swap
+        if (vtype == OPER_WRITE) {
+            ikk = vdisk->fat - 1;
+            if (!fsSectorRead(ikk, buffer))
+                return ERRO_B_READ_DISK;
+        }
+    }
 
-	// Posiciona no setor dentro do cluster para ler/gravar
-	vtemp1 = ((vclusternew - 2) * vdisk->SecPerClus);
+    // Posiciona no setor dentro do cluster para ler/gravar
+    vtemp1 = ((vclusternew - 2) * vdisk->SecPerClus);
     #ifdef __USE_FAT32_SDDISK__
         vtemp2 = vdisk->firsts * 2;
     #else
-    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+        vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
     #endif
-	vdata = vtemp1 + vtemp2;
-	vtemp1 = (voffclus * vdisk->SecPerClus);
-	vdata += voffsec - vtemp1;
+    vdata = vtemp1 + vtemp2;
+    vtemp1 = (voffclus * vdisk->SecPerClus);
+    vdata += voffsec - vtemp1;
 
-	if (vtype == OPER_READ || vtype == OPER_READWRITE) {
-		// Le o setor e coloca no buffer
-		if (!fsSectorRead(vdata, buffer))
-			return ERRO_B_READ_DISK;
-	}
-	else {
-		// Grava o buffer no setor
-		if (!fsSectorWrite(vdata, buffer, FALSE))
-			return ERRO_B_WRITE_DISK;
-	}
+    if (vtype == OPER_READ || vtype == OPER_READWRITE) {
+        // Le o setor e coloca no buffer
+        if (!fsSectorRead(vdata, buffer))
+            return ERRO_B_READ_DISK;
+    }
+    else {
+        // Grava o buffer no setor
+        if (!fsSectorWrite(vdata, buffer, FALSE))
+            return ERRO_B_WRITE_DISK;
+    }
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
@@ -1778,58 +1800,58 @@ unsigned char fsRWFile(unsigned long vclusterini, unsigned long voffset, unsigne
 //-------------------------------------------------------------------------
 unsigned char fsReadFile(char * vfilename, unsigned long voffset, unsigned char *buffer, unsigned char vsizebuffer)
 {
-	unsigned char ix, iy, vsizebf = 0;
-	unsigned char vsize, vsetor = 0, vsizeant = 0;
-	unsigned int voffsec, vtemp, ikk, ikj;
-	unsigned long vclusterini;
+    unsigned char ix, iy, vsizebf = 0;
+    unsigned char vsize, vsetor = 0, vsizeant = 0;
+    unsigned int voffsec, vtemp, ikk, ikj;
+    unsigned long vclusterini;
 
-	vclusterini = fsFindInDir(vfilename, TYPE_FILE);
+    vclusterini = fsFindInDir(vfilename, TYPE_FILE);
 
-	if (vclusterini >= ERRO_D_START)
-		return 0;	// Erro na abertura/Arquivo nao existe
+    if (vclusterini >= ERRO_D_START)
+        return 0;   // Erro na abertura/Arquivo nao existe
 
-	// Verifica se o offset eh maior que o tamanho do arquivo
-	if (voffset > vdir->Size)
-		return 0;
+    // Verifica se o offset eh maior que o tamanho do arquivo
+    if (voffset > vdir->Size)
+        return 0;
 
-	// Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
-	vtemp = voffset / vdisk->sectorSize;
-	voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+    // Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
+    vtemp = voffset / vdisk->sectorSize;
+    voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
 
-	if ((voffsec + vsizebuffer) > vdisk->sectorSize)
-		vsetor = 1;
+    if ((voffsec + vsizebuffer) > vdisk->sectorSize)
+        vsetor = 1;
 
-	for (ix = 0; ix <= vsetor; ix++) {
-    	vtemp = voffset / vdisk->sectorSize;
-    	voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+    for (ix = 0; ix <= vsetor; ix++) {
+        vtemp = voffset / vdisk->sectorSize;
+        voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
 
-		// Ler setor do offset
-		if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READ) != RETURN_OK)
-			return vsizebf;
+        // Ler setor do offset
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READ) != RETURN_OK)
+            return vsizebf;
 
-		// Verifica tamanho a ser gravado
-		if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
-			vsize = vsizebuffer - vsizeant;
-		else
-			vsize = vdisk->sectorSize - voffsec;
+        // Verifica tamanho a ser gravado
+        if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
+            vsize = vsizebuffer - vsizeant;
+        else
+            vsize = vdisk->sectorSize - voffsec;
 
-		vsizebf += vsize;
+        vsizebf += vsize;
 
-		if (vsizebf > (vdir->Size - voffset))
-			vsizebf = vdir->Size - voffset;
+        if (vsizebf > (vdir->Size - voffset))
+            vsizebf = vdir->Size - voffset;
 
-		// Retorna os dados no buffer
-		for (iy = 0; iy < vsize; iy++) {
-		    ikk = vsizeant + iy;
-		    ikj = voffsec + iy;
-			buffer[ikk] = gDataBuffer[ikj];
+        // Retorna os dados no buffer
+        for (iy = 0; iy < vsize; iy++) {
+            ikk = vsizeant + iy;
+            ikj = voffsec + iy;
+            buffer[ikk] = gDataBuffer[ikj];
         }
 
-		vsizeant = vsize;
-		voffset += vsize;
-	}
+        vsizeant = vsize;
+        voffset += vsize;
+    }
 
-	return vsizebf;
+    return vsizebf;
 }
 
 //-------------------------------------------------------------------------
@@ -1837,106 +1859,106 @@ unsigned char fsReadFile(char * vfilename, unsigned long voffset, unsigned char 
 //-------------------------------------------------------------------------
 unsigned char fsWriteFile(char * vfilename, unsigned long voffset, unsigned char *buffer, unsigned char vsizebuffer)
 {
-	unsigned char vsetor = 0, ix, iy;
-	unsigned int vsize, vsizeant = 0;
-	unsigned int voffsec, vtemp, ikk, ikj;
-	unsigned long vclusterini;
+    unsigned char vsetor = 0, ix, iy;
+    unsigned int vsize, vsizeant = 0;
+    unsigned int voffsec, vtemp, ikk, ikj;
+    unsigned long vclusterini;
 
-	vclusterini = fsFindInDir(vfilename, TYPE_FILE);
+    vclusterini = fsFindInDir(vfilename, TYPE_FILE);
 
-	if (vclusterini >= ERRO_D_START)
-		return ERRO_B_FILE_NOT_FOUND;	// Erro na abertura/Arquivo nao existe
+    if (vclusterini >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;   // Erro na abertura/Arquivo nao existe
 
-	// Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
-	vtemp = voffset / vdisk->sectorSize;
-	voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+    // Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
+    vtemp = voffset / vdisk->sectorSize;
+    voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
 
-	if ((voffsec + vsizebuffer) > vdisk->sectorSize)
-		vsetor = 1;
+    if ((voffsec + vsizebuffer) > vdisk->sectorSize)
+        vsetor = 1;
 
-	for (ix = 0; ix <= vsetor; ix++) {
-    	vtemp = voffset / vdisk->sectorSize;
-    	voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+    for (ix = 0; ix <= vsetor; ix++) {
+        vtemp = voffset / vdisk->sectorSize;
+        voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
 
-		// Ler setor do offset
-		if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READWRITE) != RETURN_OK)
-			return ERRO_B_READ_FILE;
+        // Ler setor do offset
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READWRITE) != RETURN_OK)
+            return ERRO_B_READ_FILE;
 
-		// Verifica tamanho a ser gravado
-		if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
-			vsize = vsizebuffer - vsizeant;
-		else
-			vsize = vdisk->sectorSize - voffsec;
+        // Verifica tamanho a ser gravado
+        if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
+            vsize = vsizebuffer - vsizeant;
+        else
+            vsize = vdisk->sectorSize - voffsec;
 
-		// Prepara buffer para grava?o
-		for (iy = 0; iy < vsize; iy++) {
-		    ikk = iy + voffsec;
-		    ikj = vsizeant + iy;
-			gDataBuffer[ikk] = buffer[ikj];
-		}
+        // Prepara buffer para grava?o
+        for (iy = 0; iy < vsize; iy++) {
+            ikk = iy + voffsec;
+            ikj = vsizeant + iy;
+            gDataBuffer[ikk] = buffer[ikj];
+        }
 
-		// Grava setor
-		if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_WRITE) != RETURN_OK)
-			return ERRO_B_WRITE_FILE;
+        // Grava setor
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_WRITE) != RETURN_OK)
+            return ERRO_B_WRITE_FILE;
 
-		vsizeant = vsize;
+        vsizeant = vsize;
 
-		if (vsetor == 1)
-			voffset += vsize;
-	}
+        if (vsetor == 1)
+            voffset += vsize;
+    }
 
-	if ((voffset + vsizebuffer) > vdir->Size) {
-		vdir->Size = voffset + vsizebuffer;
+    if ((voffset + vsizebuffer) > vdir->Size) {
+        vdir->Size = voffset + vsizebuffer;
 
-		if (fsUpdateDir() != RETURN_OK)
-			return ERRO_B_UPDATE_DIR;
-	}
+        if (fsUpdateDir() != RETURN_OK)
+            return ERRO_B_UPDATE_DIR;
+    }
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsMakeDir(char * vdirname)
 {
-	// Verifica ja existe arquivo/dir com esse nome
-	if (fsFindInDir(vdirname, TYPE_ALL) < ERRO_D_START)
-		return ERRO_B_DIR_FOUND;
+    // Verifica ja existe arquivo/dir com esse nome
+    if (fsFindInDir(vdirname, TYPE_ALL) < ERRO_D_START)
+        return ERRO_B_DIR_FOUND;
 
-	// Cria o dir solicitado
-	if (fsFindInDir(vdirname, TYPE_CREATE_DIR) >= ERRO_D_START)
-		return ERRO_B_CREATE_DIR;
+    // Cria o dir solicitado
+    if (fsFindInDir(vdirname, TYPE_CREATE_DIR) >= ERRO_D_START)
+        return ERRO_B_CREATE_DIR;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsChangeDir(char * vdirname)
 {
-	unsigned long vclusterdirnew;
+    unsigned long vclusterdirnew;
 
-	// Troca o diretorio conforme especificado
-	if (vdirname[0] == '/')
-		vclusterdirnew = 0x00000002;
-	else
-		vclusterdirnew	= fsFindInDir(vdirname, TYPE_DIRECTORY);
+    // Troca o diretorio conforme especificado
+    if (vdirname[0] == '/')
+        vclusterdirnew = 0x00000002;
+    else
+        vclusterdirnew  = fsFindInDir(vdirname, TYPE_DIRECTORY);
 
-	if (vclusterdirnew >= ERRO_D_START)
-		return ERRO_B_DIR_NOT_FOUND;
+    if (vclusterdirnew >= ERRO_D_START)
+        return ERRO_B_DIR_NOT_FOUND;
 
-	// Coloca o novo diretorio como atual
-	vclusterdir = vclusterdirnew;
+    // Coloca o novo diretorio como atual
+    vclusterdir = vclusterdirnew;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsRemoveDir(char * vdirname)
 {
-	// Apaga o diretorio conforme especificado
-	if (fsFindInDir(vdirname, TYPE_DEL_DIR) >= ERRO_D_START)
-		return ERRO_B_DIR_NOT_FOUND;
+    // Apaga o diretorio conforme especificado
+    if (fsFindInDir(vdirname, TYPE_DEL_DIR) >= ERRO_D_START)
+        return ERRO_B_DIR_NOT_FOUND;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
@@ -1950,185 +1972,185 @@ unsigned char fsPwdDir(unsigned char *vdirpath) {
         vdirpath[1] = '\0';
     }
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned long fsFindInDir(char * vname, unsigned char vtype)
 {
-	unsigned long vfat, vdata, vclusterfile, vclusterdirnew, vclusteratual, vtemp1, vtemp2;
-	unsigned char fnameName[9], fnameExt[4];
-	unsigned int im, ix, iy, iz, vpos, vsecfat, ventrydir, ixold;
-	unsigned int vdirdate, vdirtime, ikk, ikj, vtemp, vbytepic;
-	unsigned char vcomp, iw, ds1307[7], iww, vtempt[5], vlinha[5];
+    unsigned long vfat, vdata, vclusterfile, vclusterdirnew, vclusteratual, vtemp1, vtemp2;
+    unsigned char fnameName[9], fnameExt[4];
+    unsigned int ix, iy, iz, vpos, vsecfat, ventrydir;
+    unsigned int vdirdate, vdirtime, ikk, ikj, vtemp;
+    unsigned char vcomp, iw, ds1307[7], iww, vtempt[5], vlinha[5];
 
-	memset(fnameName, 0x20, 8);
-	memset(fnameExt, 0x20, 3);
+    memset(fnameName, 0x20, 8);
+    memset(fnameExt, 0x20, 3);
 
-	if (vname != NULL) {
-		if (vname[0] == '.' && vname[1] == '.') {
-			fnameName[0] = vname[0];
-			fnameName[1] = vname[1];
-		}
-		else if (vname[0] == '.') {
-			fnameName[0] = vname[0];
-		}
-		else {
-			iy = 0;
-			for (ix = 0; ix <= strlen(vname); ix++) {
-				if (vname[ix] == '\0')
-					break;
-				else if (vname[ix] == '.')
-					iy = 8;
-				else {
-					for (iww = 0; iww <= 56; iww++) {
-						if (strValidChars[iww] == vname[ix])
-							break;
-					}
+    if (vname != NULL) {
+        if (vname[0] == '.' && vname[1] == '.') {
+            fnameName[0] = vname[0];
+            fnameName[1] = vname[1];
+        }
+        else if (vname[0] == '.') {
+            fnameName[0] = vname[0];
+        }
+        else {
+            iy = 0;
+            for (ix = 0; ix <= strlen(vname); ix++) {
+                if (vname[ix] == '\0')
+                    break;
+                else if (vname[ix] == '.')
+                    iy = 8;
+                else {
+                    for (iww = 0; iww <= 56; iww++) {
+                        if (strValidChars[iww] == vname[ix])
+                            break;
+                    }
 
-					if (iww > 56)
-						return ERRO_D_INVALID_NAME;
+                    if (iww > 56)
+                        return ERRO_D_INVALID_NAME;
 
-					if (iy <= 7)
-						fnameName[iy] = vname[ix];
-					else {
-					    ikk = iy - 8;
-						fnameExt[ikk] = vname[ix];
-					}
+                    if (iy <= 7)
+                        fnameName[iy] = vname[ix];
+                    else {
+                        ikk = iy - 8;
+                        fnameExt[ikk] = vname[ix];
+                    }
 
-					iy++;
-				}
-			}
-		}
-	}
+                    iy++;
+                }
+            }
+        }
+    }
 
-	vfat = vdisk->fat;
-	vtemp1 = ((vclusterdir - 2) * vdisk->SecPerClus);
+    vfat = vdisk->fat;
+    vtemp1 = ((vclusterdir - 2) * vdisk->SecPerClus);
 
     #ifdef __USE_FAT32_SDDISK__
         vtemp2 = vdisk->firsts * 2;
     #else
-    	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+        vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
     #endif
 
-	vdata = vtemp1 + vtemp2;
-	vclusterfile = ERRO_D_NOT_FOUND;
-	vclusterdirnew = vclusterdir;
-	ventrydir = 0;
+    vdata = vtemp1 + vtemp2;
+    vclusterfile = ERRO_D_NOT_FOUND;
+    vclusterdirnew = vclusterdir;
+    ventrydir = 0;
 
-	while (vdata != LAST_CLUSTER_FAT32) {
-		for (iw = 0; iw < vdisk->SecPerClus; iw++) {
+    while (vdata != LAST_CLUSTER_FAT32) {
+        for (iw = 0; iw < vdisk->SecPerClus; iw++) {
 
-      		if (!fsSectorRead(vdata, gDataBuffer))
-				return ERRO_D_READ_DISK;
+            if (!fsSectorRead(vdata, gDataBuffer))
+                return ERRO_D_READ_DISK;
 
-			for (ix = 0; ix < vdisk->sectorSize; ix += 32) {
-				for (iy = 0; iy < 8; iy++) {
-				    ikk = ix + iy;
-					vdir->Name[iy] = gDataBuffer[ikk];
-				}
+            for (ix = 0; ix < vdisk->sectorSize; ix += 32) {
+                for (iy = 0; iy < 8; iy++) {
+                    ikk = ix + iy;
+                    vdir->Name[iy] = gDataBuffer[ikk];
+                }
 
-				for (iy = 0; iy < 3; iy++) {
-				    ikk = ix + 8 + iy;
-					vdir->Ext[iy] = gDataBuffer[ikk];
+                for (iy = 0; iy < 3; iy++) {
+                    ikk = ix + 8 + iy;
+                    vdir->Ext[iy] = gDataBuffer[ikk];
                 }
 
                 ikk = ix + 11;
-				vdir->Attr = gDataBuffer[ikk];
+                vdir->Attr = gDataBuffer[ikk];
 
                 ikk = ix + 15;
-				vdir->CreateTime  = (unsigned int)gDataBuffer[ikk] << 8;
+                vdir->CreateTime  = (unsigned int)gDataBuffer[ikk] << 8;
                 ikk = ix + 14;
-				vdir->CreateTime |= (unsigned int)gDataBuffer[ikk];
+                vdir->CreateTime |= (unsigned int)gDataBuffer[ikk];
 
                 ikk = ix + 17;
-				vdir->CreateDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                vdir->CreateDate  = (unsigned int)gDataBuffer[ikk] << 8;
                 ikk = ix + 16;
-				vdir->CreateDate |= (unsigned int)gDataBuffer[ikk];
+                vdir->CreateDate |= (unsigned int)gDataBuffer[ikk];
 
                 ikk = ix + 19;
-				vdir->LastAccessDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                vdir->LastAccessDate  = (unsigned int)gDataBuffer[ikk] << 8;
                 ikk = ix + 18;
-				vdir->LastAccessDate |= (unsigned int)gDataBuffer[ikk];
+                vdir->LastAccessDate |= (unsigned int)gDataBuffer[ikk];
 
                 ikk = ix + 23;
-				vdir->UpdateTime  = (unsigned int)gDataBuffer[ikk] << 8;
+                vdir->UpdateTime  = (unsigned int)gDataBuffer[ikk] << 8;
                 ikk = ix + 22;
-				vdir->UpdateTime |= (unsigned int)gDataBuffer[ikk];
+                vdir->UpdateTime |= (unsigned int)gDataBuffer[ikk];
 
                 ikk = ix + 25;
-				vdir->UpdateDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                vdir->UpdateDate  = (unsigned int)gDataBuffer[ikk] << 8;
                 ikk = ix + 24;
-				vdir->UpdateDate |= (unsigned int)gDataBuffer[ikk];
+                vdir->UpdateDate |= (unsigned int)gDataBuffer[ikk];
 
                 ikk = ix + 21;
-				vdir->FirstCluster  = (unsigned long)gDataBuffer[ikk] << 24;
+                vdir->FirstCluster  = (unsigned long)gDataBuffer[ikk] << 24;
                 ikk = ix + 20;
-				vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 16;
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 16;
                 ikk = ix + 27;
-				vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 8;
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 8;
                 ikk = ix + 26;
-				vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk];
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk];
 
                 ikk = ix + 31;
-				vdir->Size  = (unsigned long)gDataBuffer[ikk] << 24;
+                vdir->Size  = (unsigned long)gDataBuffer[ikk] << 24;
                 ikk = ix + 30;
-				vdir->Size |= (unsigned long)gDataBuffer[ikk] << 16;
+                vdir->Size |= (unsigned long)gDataBuffer[ikk] << 16;
                 ikk = ix + 29;
-				vdir->Size |= (unsigned long)gDataBuffer[ikk] << 8;
+                vdir->Size |= (unsigned long)gDataBuffer[ikk] << 8;
                 ikk = ix + 28;
-				vdir->Size |= (unsigned long)gDataBuffer[ikk];
+                vdir->Size |= (unsigned long)gDataBuffer[ikk];
 
-				vdir->DirClusSec = vdata;
-				vdir->DirEntry = ix;
+                vdir->DirClusSec = vdata;
+                vdir->DirEntry = ix;
 
-				if (vtype == TYPE_FIRST_ENTRY) 
+                if (vtype == TYPE_FIRST_ENTRY) 
                 {
-					if (vdir->Name[0] != DIR_DEL) 
+                    if (vdir->Name[0] != DIR_DEL) 
                     {
-						if (vdir->Name[0] != DIR_EMPTY) 
+                        if (vdir->Name[0] != DIR_EMPTY) 
                         {
                             if (vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM)
-							{
+                            {
                                 vclusterfile = vdir->FirstCluster;
-    						    vdata = LAST_CLUSTER_FAT32;
-    						    break;
+                                vdata = LAST_CLUSTER_FAT32;
+                                break;
                             }
-    					}
-					}
-				}
+                        }
+                    }
+                }
 
-				if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
-					if (vdir->Name[0] == DIR_EMPTY || vdir->Name[0] == DIR_DEL) {
-						vclusterfile = ventrydir;
+                if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
+                    if (vdir->Name[0] == DIR_EMPTY || vdir->Name[0] == DIR_DEL) {
+                        vclusterfile = ventrydir;
 
-						if (vtype != TYPE_EMPTY_ENTRY) {
-							vclusterfile = fsFindClusterFree(FREE_USE);
+                        if (vtype != TYPE_EMPTY_ENTRY) {
+                            vclusterfile = fsFindClusterFree(FREE_USE);
 
-							if (vclusterfile >= ERRO_D_START)
-								return ERRO_D_NOT_FOUND;
+                            if (vclusterfile >= ERRO_D_START)
+                                return ERRO_D_NOT_FOUND;
 
-						    if (!fsSectorRead(vdata, gDataBuffer))
-								return ERRO_D_READ_DISK;
+                            if (!fsSectorRead(vdata, gDataBuffer))
+                                return ERRO_D_READ_DISK;
 
-							for (iz = 0; iz <= 10; iz++) {
-								if (iz <= 7) {
-								    ikk = ix + iz;
-									gDataBuffer[ikk] = fnameName[iz];
-								}
-								else {
-								    ikk = ix + iz;
-								    ikj = iz - 8;
-									gDataBuffer[ikk] = fnameExt[ikj];
-								}
-							}
+                            for (iz = 0; iz <= 10; iz++) {
+                                if (iz <= 7) {
+                                    ikk = ix + iz;
+                                    gDataBuffer[ikk] = fnameName[iz];
+                                }
+                                else {
+                                    ikk = ix + iz;
+                                    ikj = iz - 8;
+                                    gDataBuffer[ikk] = fnameExt[ikj];
+                                }
+                            }
 
-							if (vtype == TYPE_CREATE_FILE)
-								gDataBuffer[ix + 11] = 0x00;
-							else
-								gDataBuffer[ix + 11] = ATTR_DIRECTORY;
+                            if (vtype == TYPE_CREATE_FILE)
+                                gDataBuffer[ix + 11] = 0x00;
+                            else
+                                gDataBuffer[ix + 11] = ATTR_DIRECTORY;
 
-							// Ler Data/Hora do DS1307 - I2C
+                            // Ler Data/Hora do DS1307 - I2C
                             /* ver como fazer
                             sendPic(2);
                             sendPic(picDOScmd);
@@ -2177,389 +2199,389 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
                             vtempt[2] = '\0';
                             ds1307[2] = atoi((char*)vtempt);
 
-						    // Converte para a Data/Hora da FAT32
-							vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
-							vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+                            // Converte para a Data/Hora da FAT32
+                            vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
+                            vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
 
-							// Coloca dados no buffer para gravacao
-							ikk = ix + 12;
-							gDataBuffer[ikk] = 0x00;	// case
-							ikk = ix + 13;
-							gDataBuffer[ikk] = 0x00;	// creation time in ms
-							ikk = ix + 14;
-							gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);	// creation time (ds1307)
-							ikk = ix + 15;
-							gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
-							ikk = ix + 16;
-							gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);	// creation date (ds1307)
-							ikk = ix + 17;
-							gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
-							ikk = ix + 18;
-							gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);	// last access	(ds1307)
-							ikk = ix + 19;
-							gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                            // Coloca dados no buffer para gravacao
+                            ikk = ix + 12;
+                            gDataBuffer[ikk] = 0x00;    // case
+                            ikk = ix + 13;
+                            gDataBuffer[ikk] = 0x00;    // creation time in ms
+                            ikk = ix + 14;
+                            gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);    // creation time (ds1307)
+                            ikk = ix + 15;
+                            gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                            ikk = ix + 16;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // creation date (ds1307)
+                            ikk = ix + 17;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                            ikk = ix + 18;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // last access  (ds1307)
+                            ikk = ix + 19;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-							ikk = ix + 22;
-							gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);	// time update (ds1307)
-							ikk = ix + 23;
-							gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
-							ikk = ix + 24;
-							gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);	// date update (ds1307)
-							ikk = ix + 25;
-							gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                            ikk = ix + 22;
+                            gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);    // time update (ds1307)
+                            ikk = ix + 23;
+                            gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                            ikk = ix + 24;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // date update (ds1307)
+                            ikk = ix + 25;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-							ikk = ix + 26;
-						    gDataBuffer[ikk] = (unsigned char)(vclusterfile & 0xFF);
-							ikk = ix + 27;
-						    gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
-							ikk = ix + 20;
-						    gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
-							ikk = ix + 21;
-						    gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
+                            ikk = ix + 26;
+                            gDataBuffer[ikk] = (unsigned char)(vclusterfile & 0xFF);
+                            ikk = ix + 27;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
+                            ikk = ix + 20;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
+                            ikk = ix + 21;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
 
-							ikk = ix + 28;
-							gDataBuffer[ikk] = 0x00;
-							ikk = ix + 29;
-							gDataBuffer[ikk] = 0x00;
-							ikk = ix + 30;
-							gDataBuffer[ikk] = 0x00;
-							ikk = ix + 31;
-							gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 28;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 29;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 30;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 31;
+                            gDataBuffer[ikk] = 0x00;
 
-							if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
-								return ERRO_D_WRITE_DISK;
+                            if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                return ERRO_D_WRITE_DISK;
 
-							if (vtype == TYPE_CREATE_DIR) {
-	  							// Posicionar na nova posicao do diretorio
-                            	vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
+                            if (vtype == TYPE_CREATE_DIR) {
+                                // Posicionar na nova posicao do diretorio
+                                vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
                                 #ifdef __USE_FAT32_SDDISK__
                                     vtemp2 = vdisk->firsts * 2;
                                 #else
-                                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
                                 #endif
-                            	vdata = vtemp1 + vtemp2;
+                                vdata = vtemp1 + vtemp2;
 
-								// Limpar novo cluster do diretorio (Zerar)
-								memset(gDataBuffer, 0x00, vdisk->sectorSize);
+                                // Limpar novo cluster do diretorio (Zerar)
+                                memset(gDataBuffer, 0x00, vdisk->sectorSize);
 
-								for (iz = 0; iz < vdisk->SecPerClus; iz++) {
-								    if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
-										return ERRO_D_WRITE_DISK;
-									vdata++;
-								}
+                                for (iz = 0; iz < vdisk->SecPerClus; iz++) {
+                                    if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                        return ERRO_D_WRITE_DISK;
+                                    vdata++;
+                                }
 
-                            	vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
+                                vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
                                 #ifdef __USE_FAT32_SDDISK__
                                     vtemp2 = vdisk->firsts * 2;
                                 #else
-                                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
                                 #endif
-                            	vdata = vtemp1 + vtemp2;
+                                vdata = vtemp1 + vtemp2;
 
-	  							// Criar diretorio . (atual)
-	  							memset(gDataBuffer, 0x00, vdisk->sectorSize);
+                                // Criar diretorio . (atual)
+                                memset(gDataBuffer, 0x00, vdisk->sectorSize);
 
-	  							ix = 0;
-	  							gDataBuffer[0] = '.';
-	  							gDataBuffer[1] = 0x20;
-	  							gDataBuffer[2] = 0x20;
-	  							gDataBuffer[3] = 0x20;
-	  							gDataBuffer[4] = 0x20;
-	  							gDataBuffer[5] = 0x20;
-	  							gDataBuffer[6] = 0x20;
-	  							gDataBuffer[7] = 0x20;
-	  							gDataBuffer[8] = 0x20;
-	  							gDataBuffer[9] = 0x20;
-	  							gDataBuffer[10] = 0x20;
+                                ix = 0;
+                                gDataBuffer[0] = '.';
+                                gDataBuffer[1] = 0x20;
+                                gDataBuffer[2] = 0x20;
+                                gDataBuffer[3] = 0x20;
+                                gDataBuffer[4] = 0x20;
+                                gDataBuffer[5] = 0x20;
+                                gDataBuffer[6] = 0x20;
+                                gDataBuffer[7] = 0x20;
+                                gDataBuffer[8] = 0x20;
+                                gDataBuffer[9] = 0x20;
+                                gDataBuffer[10] = 0x20;
 
-	  							gDataBuffer[11] = 0x10;
+                                gDataBuffer[11] = 0x10;
 
-								gDataBuffer[12] = 0x00;	// case
-								gDataBuffer[13] = 0x00;	// creation time in ms
-								gDataBuffer[14] = (unsigned char)(vdirtime & 0xFF);	// creation time (ds1307)
-								gDataBuffer[15] = (unsigned char)((vdirtime >> 8) & 0xFF);
-								gDataBuffer[16] = (unsigned char)(vdirdate & 0xFF);	// creation date (ds1307)
-								gDataBuffer[17] = (unsigned char)((vdirdate >> 8) & 0xFF);
-								gDataBuffer[18] = (unsigned char)(vdirdate & 0xFF);	// last access	(ds1307)
-								gDataBuffer[19] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[12] = 0x00; // case
+                                gDataBuffer[13] = 0x00; // creation time in ms
+                                gDataBuffer[14] = (unsigned char)(vdirtime & 0xFF); // creation time (ds1307)
+                                gDataBuffer[15] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[16] = (unsigned char)(vdirdate & 0xFF); // creation date (ds1307)
+                                gDataBuffer[17] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[18] = (unsigned char)(vdirdate & 0xFF); // last access  (ds1307)
+                                gDataBuffer[19] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-								gDataBuffer[22] = (unsigned char)(vdirtime & 0xFF);	// time update (ds1307)
-								gDataBuffer[23] = (unsigned char)((vdirtime >> 8) & 0xFF);
-								gDataBuffer[24] = (unsigned char)(vdirdate & 0xFF);	// date update (ds1307)
-								gDataBuffer[25] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[22] = (unsigned char)(vdirtime & 0xFF); // time update (ds1307)
+                                gDataBuffer[23] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[24] = (unsigned char)(vdirdate & 0xFF); // date update (ds1307)
+                                gDataBuffer[25] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-	  						    gDataBuffer[26] = (unsigned char)(vclusterfile & 0xFF);
-	  						    gDataBuffer[27] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
-	  						    gDataBuffer[20] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
-	  						    gDataBuffer[21] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
+                                gDataBuffer[26] = (unsigned char)(vclusterfile & 0xFF);
+                                gDataBuffer[27] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
+                                gDataBuffer[20] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
+                                gDataBuffer[21] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
 
-	  							gDataBuffer[28] = 0x00;
-	  							gDataBuffer[29] = 0x00;
-	  							gDataBuffer[30] = 0x00;
-	  							gDataBuffer[31] = 0x00;
+                                gDataBuffer[28] = 0x00;
+                                gDataBuffer[29] = 0x00;
+                                gDataBuffer[30] = 0x00;
+                                gDataBuffer[31] = 0x00;
 
-	  							// Criar diretorio .. (anterior)
-	  							ix = 32;
-	  							gDataBuffer[32] = '.';
-	  							gDataBuffer[33] = '.';
-	  							gDataBuffer[34] = 0x20;
-	  							gDataBuffer[35] = 0x20;
-	  							gDataBuffer[36] = 0x20;
-	  							gDataBuffer[37] = 0x20;
-	  							gDataBuffer[38] = 0x20;
-	  							gDataBuffer[39] = 0x20;
-	  							gDataBuffer[40] = 0x20;
-	  							gDataBuffer[41] = 0x20;
-	  							gDataBuffer[42] = 0x20;
+                                // Criar diretorio .. (anterior)
+                                ix = 32;
+                                gDataBuffer[32] = '.';
+                                gDataBuffer[33] = '.';
+                                gDataBuffer[34] = 0x20;
+                                gDataBuffer[35] = 0x20;
+                                gDataBuffer[36] = 0x20;
+                                gDataBuffer[37] = 0x20;
+                                gDataBuffer[38] = 0x20;
+                                gDataBuffer[39] = 0x20;
+                                gDataBuffer[40] = 0x20;
+                                gDataBuffer[41] = 0x20;
+                                gDataBuffer[42] = 0x20;
 
-	  							gDataBuffer[43] = 0x10;
+                                gDataBuffer[43] = 0x10;
 
-								gDataBuffer[44] = 0x00;	// case
-								gDataBuffer[45] = 0x00;	// creation time in ms
-								gDataBuffer[46] = (unsigned char)(vdirtime & 0xFF);	// creation time (ds1307)
-								gDataBuffer[47] = (unsigned char)((vdirtime >> 8) & 0xFF);
-								gDataBuffer[48] = (unsigned char)(vdirdate & 0xFF);	// creation date (ds1307)
-								gDataBuffer[49] = (unsigned char)((vdirdate >> 8) & 0xFF);
-								gDataBuffer[50] = (unsigned char)(vdirdate & 0xFF);	// last access	(ds1307)
-								gDataBuffer[51] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[44] = 0x00; // case
+                                gDataBuffer[45] = 0x00; // creation time in ms
+                                gDataBuffer[46] = (unsigned char)(vdirtime & 0xFF); // creation time (ds1307)
+                                gDataBuffer[47] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[48] = (unsigned char)(vdirdate & 0xFF); // creation date (ds1307)
+                                gDataBuffer[49] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[50] = (unsigned char)(vdirdate & 0xFF); // last access  (ds1307)
+                                gDataBuffer[51] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-								gDataBuffer[54] = (unsigned char)(vdirtime & 0xFF);	// time update (ds1307)
-								gDataBuffer[55] = (unsigned char)((vdirtime >> 8) & 0xFF);
-								gDataBuffer[56] = (unsigned char)(vdirdate & 0xFF);	// date update (ds1307)
-								gDataBuffer[57] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[54] = (unsigned char)(vdirtime & 0xFF); // time update (ds1307)
+                                gDataBuffer[55] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[56] = (unsigned char)(vdirdate & 0xFF); // date update (ds1307)
+                                gDataBuffer[57] = (unsigned char)((vdirdate >> 8) & 0xFF);
 
-	  						    gDataBuffer[58] = (unsigned char)(vclusterdir & 0xFF);
-	  						    gDataBuffer[59] = (unsigned char)((vclusterdir / 0x100) & 0xFF);
-	  						    gDataBuffer[52] = (unsigned char)((vclusterdir / 0x10000) & 0xFF);
-	  						    gDataBuffer[53] = (unsigned char)((vclusterdir / 0x1000000) & 0xFF);
+                                gDataBuffer[58] = (unsigned char)(vclusterdir & 0xFF);
+                                gDataBuffer[59] = (unsigned char)((vclusterdir / 0x100) & 0xFF);
+                                gDataBuffer[52] = (unsigned char)((vclusterdir / 0x10000) & 0xFF);
+                                gDataBuffer[53] = (unsigned char)((vclusterdir / 0x1000000) & 0xFF);
 
-	  							gDataBuffer[60] = 0x00;
-	  							gDataBuffer[61] = 0x00;
-	  							gDataBuffer[62] = 0x00;
-	  							gDataBuffer[63] = 0x00;
+                                gDataBuffer[60] = 0x00;
+                                gDataBuffer[61] = 0x00;
+                                gDataBuffer[62] = 0x00;
+                                gDataBuffer[63] = 0x00;
 
-	  						    if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
-	  								return ERRO_D_WRITE_DISK;
-	              			}
+                                if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                    return ERRO_D_WRITE_DISK;
+                            }
 
-							vdata = LAST_CLUSTER_FAT32;
-							break;
-						}
+                            vdata = LAST_CLUSTER_FAT32;
+                            break;
+                        }
 
-						vdata = LAST_CLUSTER_FAT32;
-						break;
-					}
-				}
-				else if (vtype != TYPE_FIRST_ENTRY) {
-					if (vdir->Name[0] != DIR_EMPTY && vdir->Name[0] != DIR_DEL && vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM) {
-						vcomp = 1;
-						for (iz = 0; iz <= 10; iz++) {
-							if (iz <= 7) {
-								if (fnameName[iz] != vdir->Name[iz]) {
-									vcomp = 0;
-									break;
-								}
-							}
-							else {
-							    ikk = iz - 8;
-								if (fnameExt[ikk] != vdir->Ext[ikk]) {
-									vcomp = 0;
-									break;
-								}
-							}
-						}
+                        vdata = LAST_CLUSTER_FAT32;
+                        break;
+                    }
+                }
+                else if (vtype != TYPE_FIRST_ENTRY) {
+                    if (vdir->Name[0] != DIR_EMPTY && vdir->Name[0] != DIR_DEL && vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM) {
+                        vcomp = 1;
+                        for (iz = 0; iz <= 10; iz++) {
+                            if (iz <= 7) {
+                                if (fnameName[iz] != vdir->Name[iz]) {
+                                    vcomp = 0;
+                                    break;
+                                }
+                            }
+                            else {
+                                ikk = iz - 8;
+                                if (fnameExt[ikk] != vdir->Ext[ikk]) {
+                                    vcomp = 0;
+                                    break;
+                                }
+                            }
+                        }
 
-						if (vcomp) {
-							if (vtype == TYPE_ALL || (vtype == TYPE_FILE && vdir->Attr != ATTR_DIRECTORY) || (vtype == TYPE_DIRECTORY && vdir->Attr == ATTR_DIRECTORY)) {
-		  						vclusterfile = vdir->FirstCluster;
-		  						break;
-	  						}
-	  						else if (vtype == TYPE_NEXT_ENTRY) {
-		  						vtype = TYPE_FIRST_ENTRY;
-		  					}
-	  						else if (vtype == TYPE_DEL_FILE || vtype == TYPE_DEL_DIR) {
-								// Guardando Cluster Atual
-								vclusteratual = vdir->FirstCluster;
+                        if (vcomp) {
+                            if (vtype == TYPE_ALL || (vtype == TYPE_FILE && vdir->Attr != ATTR_DIRECTORY) || (vtype == TYPE_DIRECTORY && vdir->Attr == ATTR_DIRECTORY)) {
+                                vclusterfile = vdir->FirstCluster;
+                                break;
+                            }
+                            else if (vtype == TYPE_NEXT_ENTRY) {
+                                vtype = TYPE_FIRST_ENTRY;
+                            }
+                            else if (vtype == TYPE_DEL_FILE || vtype == TYPE_DEL_DIR) {
+                                // Guardando Cluster Atual
+                                vclusteratual = vdir->FirstCluster;
 
-		  						// Apagando no Diretorio
-		                		gDataBuffer[ix] = DIR_DEL;
-		                		ikk = ix + 26;
-								gDataBuffer[ikk] = 0x00;
-		                		ikk = ix + 27;
-								gDataBuffer[ikk] = 0x00;
-		                		ikk = ix + 20;
-								gDataBuffer[ikk] = 0x00;
-		                		ikk = ix + 21;
-								gDataBuffer[ikk] = 0x00;
+                                // Apagando no Diretorio
+                                gDataBuffer[ix] = DIR_DEL;
+                                ikk = ix + 26;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 27;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 20;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 21;
+                                gDataBuffer[ikk] = 0x00;
 
-								if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
-		          			  		return ERRO_D_WRITE_DISK;
+                                if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                    return ERRO_D_WRITE_DISK;
 
-				                // Apagando vestigios na FAT
-	          					while (1) {
-				                    // Procura Proximo Cluster e ja zera
-			           			    vclusterdirnew = fsFindNextCluster(vclusteratual, NEXT_FREE);
+                                // Apagando vestigios na FAT
+                                while (1) {
+                                    // Procura Proximo Cluster e ja zera
+                                    vclusterdirnew = fsFindNextCluster(vclusteratual, NEXT_FREE);
 
-					                if (vclusterdirnew >= ERRO_D_START)
-					                    return ERRO_D_NOT_FOUND;
+                                    if (vclusterdirnew >= ERRO_D_START)
+                                        return ERRO_D_NOT_FOUND;
 
-					                if (vclusterdirnew == LAST_CLUSTER_FAT32) {
-						                vclusterfile = LAST_CLUSTER_FAT32;
-						          		vdata = LAST_CLUSTER_FAT32;
-						          		break;
-					                }
+                                    if (vclusterdirnew == LAST_CLUSTER_FAT32) {
+                                        vclusterfile = LAST_CLUSTER_FAT32;
+                                        vdata = LAST_CLUSTER_FAT32;
+                                        break;
+                                    }
 
-			            			// Tornar cluster atual o proximo
-			            			vclusteratual = vclusterdirnew;
-	          					}
-	  						}
-						}
-					}
-				}
+                                    // Tornar cluster atual o proximo
+                                    vclusteratual = vclusterdirnew;
+                                }
+                            }
+                        }
+                    }
+                }
 
-				if (vdir->Name[0] == DIR_EMPTY) {
-					vdata = LAST_CLUSTER_FAT32;
-					break;
-				}
-			}
+                if (vdir->Name[0] == DIR_EMPTY) {
+                    vdata = LAST_CLUSTER_FAT32;
+                    break;
+                }
+            }
 
-			if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
-				break;
+            if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
+                break;
 
-			ventrydir++;
-			vdata++;
-		}
+            ventrydir++;
+            vdata++;
+        }
 
-		// Se conseguiu concluir a operacao solicitada, sai do loop
-		if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
-			break;
-		else {
-			// Posiciona na FAT, o endereco da pasta atual
-			vsecfat = vclusterdirnew / 128;
-			vfat = vdisk->fat + vsecfat;
+        // Se conseguiu concluir a operacao solicitada, sai do loop
+        if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
+            break;
+        else {
+            // Posiciona na FAT, o endereco da pasta atual
+            vsecfat = vclusterdirnew / 128;
+            vfat = vdisk->fat + vsecfat;
 
-		    if (!fsSectorRead(vfat, gDataBuffer))
-				return ERRO_D_READ_DISK;
+            if (!fsSectorRead(vfat, gDataBuffer))
+                return ERRO_D_READ_DISK;
 
             vtemp = vclusterdirnew - (128 * vsecfat);
-			vpos = vtemp * 4;
+            vpos = vtemp * 4;
             ikk = vpos + 3;
-			vclusterdirnew  = (unsigned long)gDataBuffer[ikk] << 24;
+            vclusterdirnew  = (unsigned long)gDataBuffer[ikk] << 24;
             ikk = vpos + 2;
-			vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 16;
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 16;
             ikk = vpos + 1;
-			vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 8;
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 8;
             ikk = vpos;
-			vclusterdirnew |= (unsigned long)gDataBuffer[ikk];
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk];
 
-			if (vclusterdirnew != LAST_CLUSTER_FAT32) {
-				// Devolve a proxima posicao para procura/uso
-            	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+            if (vclusterdirnew != LAST_CLUSTER_FAT32) {
+                // Devolve a proxima posicao para procura/uso
+                vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
                 #ifdef __USE_FAT32_SDDISK__
                     vtemp2 = vdisk->firsts * 2;
                 #else
-                	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
                 #endif
-            	vdata = vtemp1 + vtemp2;
-			}
-			else {
-				// Se for para criar uma nova entrada no diretorio e nao tem mais espaco
-				// Cria uma nova entrada na Fat
-				if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
-					vclusterdirnew = fsFindClusterFree(FREE_USE);
+                vdata = vtemp1 + vtemp2;
+            }
+            else {
+                // Se for para criar uma nova entrada no diretorio e nao tem mais espaco
+                // Cria uma nova entrada na Fat
+                if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
+                    vclusterdirnew = fsFindClusterFree(FREE_USE);
 
-					if (vclusterdirnew < ERRO_D_START) {
-					    if (!fsSectorRead(vfat, gDataBuffer))
-							return ERRO_D_READ_DISK;
+                    if (vclusterdirnew < ERRO_D_START) {
+                        if (!fsSectorRead(vfat, gDataBuffer))
+                            return ERRO_D_READ_DISK;
 
-					    gDataBuffer[vpos] = (unsigned char)(vclusterdirnew & 0xFF);
-					    ikk = vpos + 1;
-					    gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x100) & 0xFF);
-					    ikk = vpos + 2;
-					    gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x10000) & 0xFF);
-					    ikk = vpos + 3;
-					    gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x1000000) & 0xFF);
+                        gDataBuffer[vpos] = (unsigned char)(vclusterdirnew & 0xFF);
+                        ikk = vpos + 1;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x100) & 0xFF);
+                        ikk = vpos + 2;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x10000) & 0xFF);
+                        ikk = vpos + 3;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x1000000) & 0xFF);
 
-					    if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
-							return ERRO_D_WRITE_DISK;
+                        if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                            return ERRO_D_WRITE_DISK;
 
-						// Posicionar na nova posicao do diretorio
-                    	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+                        // Posicionar na nova posicao do diretorio
+                        vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
                         #ifdef __USE_FAT32_SDDISK__
                             vtemp2 = vdisk->firsts * 2;
                         #else
-                        	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                            vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
                         #endif
-                    	vdata = vtemp1 + vtemp2;
+                        vdata = vtemp1 + vtemp2;
 
-						// Limpar novo cluster do diretorio (Zerar)
-						memset(gDataBuffer, 0x00, vdisk->sectorSize);
+                        // Limpar novo cluster do diretorio (Zerar)
+                        memset(gDataBuffer, 0x00, vdisk->sectorSize);
 
-						for (iz = 0; iz < vdisk->SecPerClus; iz++) {
-						    if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
-								return ERRO_D_WRITE_DISK;
-							vdata++;
-						}
+                        for (iz = 0; iz < vdisk->SecPerClus; iz++) {
+                            if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                return ERRO_D_WRITE_DISK;
+                            vdata++;
+                        }
 
-                    	vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+                        vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
                         #ifdef __USE_FAT32_SDDISK__
                             vtemp2 = vdisk->firsts * 2;
                         #else
-                        	vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                            vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
                         #endif
-                    	vdata = vtemp1 + vtemp2;
-					}
-					else {
-						vclusterdirnew = LAST_CLUSTER_FAT32;
-						vclusterfile = ERRO_D_NOT_FOUND;
-						vdata = vclusterdirnew;
-					}
-				}
-				else {
-					vdata = vclusterdirnew;
-				}
-			}
-		}
-	}
+                        vdata = vtemp1 + vtemp2;
+                    }
+                    else {
+                        vclusterdirnew = LAST_CLUSTER_FAT32;
+                        vclusterfile = ERRO_D_NOT_FOUND;
+                        vdata = vclusterdirnew;
+                    }
+                }
+                else {
+                    vdata = vclusterdirnew;
+                }
+            }
+        }
+    }
 
-	return vclusterfile;
+    return vclusterfile;
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsUpdateDir()
 {
-	unsigned char iy;
-	unsigned int ventry, ikk;
+    unsigned char iy;
+    unsigned int ventry, ikk;
 
-	if (!fsSectorRead(vdir->DirClusSec, gDataBuffer))
-		return ERRO_B_READ_DISK;
+    if (!fsSectorRead(vdir->DirClusSec, gDataBuffer))
+        return ERRO_B_READ_DISK;
 
     ventry = vdir->DirEntry;
 
-	for (iy = 0; iy < 8; iy++) {
-	    ikk = ventry + iy;
-		gDataBuffer[ikk] = vdir->Name[iy];
-	}
+    for (iy = 0; iy < 8; iy++) {
+        ikk = ventry + iy;
+        gDataBuffer[ikk] = vdir->Name[iy];
+    }
 
-	for (iy = 0; iy < 3; iy++) {
-	    ikk = ventry + 8 + iy;
-		gDataBuffer[ikk] = vdir->Ext[iy];
-	}
+    for (iy = 0; iy < 3; iy++) {
+        ikk = ventry + 8 + iy;
+        gDataBuffer[ikk] = vdir->Ext[iy];
+    }
 
     ikk = ventry + 18;
-	gDataBuffer[ikk] = (unsigned char)(vdir->LastAccessDate & 0xFF);	// last access	(ds1307)
+    gDataBuffer[ikk] = (unsigned char)(vdir->LastAccessDate & 0xFF);    // last access  (ds1307)
     ikk = ventry + 19;
-	gDataBuffer[ikk] = (unsigned char)((vdir->LastAccessDate / 0x100) & 0xFF);
+    gDataBuffer[ikk] = (unsigned char)((vdir->LastAccessDate / 0x100) & 0xFF);
 
     ikk = ventry + 22;
-	gDataBuffer[ikk] = (unsigned char)(vdir->UpdateTime & 0xFF);	// time update (ds1307)
+    gDataBuffer[ikk] = (unsigned char)(vdir->UpdateTime & 0xFF);    // time update (ds1307)
     ikk = ventry + 23;
-	gDataBuffer[ikk] = (unsigned char)((vdir->UpdateTime / 0x100) & 0xFF);
+    gDataBuffer[ikk] = (unsigned char)((vdir->UpdateTime / 0x100) & 0xFF);
 
     ikk = ventry + 24;
-	gDataBuffer[ikk] = (unsigned char)(vdir->UpdateDate & 0xFF);	// date update (ds1307)
+    gDataBuffer[ikk] = (unsigned char)(vdir->UpdateDate & 0xFF);    // date update (ds1307)
     ikk = ventry + 25;
-	gDataBuffer[ikk] = (unsigned char)((vdir->UpdateDate / 0x100) & 0xFF);
+    gDataBuffer[ikk] = (unsigned char)((vdir->UpdateDate / 0x100) & 0xFF);
 
     ikk = ventry + 28;
     gDataBuffer[ikk] = (unsigned char)(vdir->Size & 0xFF);
@@ -2571,55 +2593,55 @@ unsigned char fsUpdateDir()
     gDataBuffer[ikk] = (unsigned char)((vdir->Size / 0x1000000) & 0xFF);
 
     if (!fsSectorWrite(vdir->DirClusSec, gDataBuffer, FALSE))
-		return ERRO_B_WRITE_DISK;
+        return ERRO_B_WRITE_DISK;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
 unsigned long fsFindNextCluster(unsigned long vclusteratual, unsigned char vtype)
 {
-	unsigned long vfat, vclusternew;
-	unsigned int vpos, vsecfat, ikk;
+    unsigned long vfat, vclusternew;
+    unsigned int vpos, vsecfat, ikk;
 
-	vsecfat = vclusteratual / 128;
-	vfat = vdisk->fat + vsecfat;
+    vsecfat = vclusteratual / 128;
+    vfat = vdisk->fat + vsecfat;
 
-	if (!fsSectorRead(vfat, gDataBuffer))
-		return ERRO_D_READ_DISK;
+    if (!fsSectorRead(vfat, gDataBuffer))
+        return ERRO_D_READ_DISK;
 
-	vpos = (vclusteratual - (128 * vsecfat)) * 4;
-	ikk = vpos + 3;
-	vclusternew  = (unsigned long)gDataBuffer[ikk] << 24;
-	ikk = vpos + 2;
-	vclusternew |= (unsigned long)gDataBuffer[ikk] << 16;
-	ikk = vpos + 1;
-	vclusternew |= (unsigned long)gDataBuffer[ikk] << 8;
-	vclusternew |= (unsigned long)gDataBuffer[vpos];
+    vpos = (vclusteratual - (128 * vsecfat)) * 4;
+    ikk = vpos + 3;
+    vclusternew  = (unsigned long)gDataBuffer[ikk] << 24;
+    ikk = vpos + 2;
+    vclusternew |= (unsigned long)gDataBuffer[ikk] << 16;
+    ikk = vpos + 1;
+    vclusternew |= (unsigned long)gDataBuffer[ikk] << 8;
+    vclusternew |= (unsigned long)gDataBuffer[vpos];
 
-	if (vtype != NEXT_FIND) {
-		if (vtype == NEXT_FREE) {
-			gDataBuffer[vpos] = 0x00;
-        	ikk = vpos + 1;
-			gDataBuffer[ikk] = 0x00;
-        	ikk = vpos + 2;
-			gDataBuffer[ikk] = 0x00;
-        	ikk = vpos + 3;
-			gDataBuffer[ikk] = 0x00;
-		}
-		else if (vtype == NEXT_FULL) {
-			gDataBuffer[vpos] = 0xFF;
-        	ikk = vpos + 1;
-			gDataBuffer[ikk] = 0xFF;
-        	ikk = vpos + 2;
-			gDataBuffer[ikk] = 0xFF;
-        	ikk = vpos + 3;
-			gDataBuffer[ikk] = 0x0F;
-		}
+    if (vtype != NEXT_FIND) {
+        if (vtype == NEXT_FREE) {
+            gDataBuffer[vpos] = 0x00;
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = 0x00;
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = 0x00;
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = 0x00;
+        }
+        else if (vtype == NEXT_FULL) {
+            gDataBuffer[vpos] = 0xFF;
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = 0x0F;
+        }
 
-		if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
-			return ERRO_D_WRITE_DISK;
-	}
+        if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+            return ERRO_D_WRITE_DISK;
+    }
 
   return vclusternew;
 }
@@ -2627,69 +2649,69 @@ unsigned long fsFindNextCluster(unsigned long vclusteratual, unsigned char vtype
 //-------------------------------------------------------------------------
 unsigned long fsFindClusterFree(unsigned char vtype)
 {
-  	unsigned long vclusterfree = 0x00, cc, vfat;
-	unsigned int jj, ikk, ikk2, ikk3;
+    unsigned long vclusterfree = 0x00, cc, vfat;
+    unsigned int jj, ikk, ikk2, ikk3;
 
-	vfat = vdisk->fat;
+    vfat = vdisk->fat;
 
-	for (cc = 0; cc <= vdisk->fatsize; cc++) {
-	    // LER FAT SECTOR
-		if (!fsSectorRead(vfat, gDataBuffer))
-			return ERRO_D_READ_DISK;
+    for (cc = 0; cc <= vdisk->fatsize; cc++) {
+        // LER FAT SECTOR
+        if (!fsSectorRead(vfat, gDataBuffer))
+            return ERRO_D_READ_DISK;
 
-		// Procura Cluster Livre dentro desse setor
-		for (jj = 0; jj < vdisk->sectorSize; jj += 4) {
-		    ikk = jj + 1;
-		    ikk2 = jj + 2;
-		    ikk3 = jj + 3;
-			if (gDataBuffer[jj] == 0x00 && gDataBuffer[ikk] == 0x00 && gDataBuffer[ikk2] == 0x00 && gDataBuffer[ikk3] == 0x00)
-			    break;
+        // Procura Cluster Livre dentro desse setor
+        for (jj = 0; jj < vdisk->sectorSize; jj += 4) {
+            ikk = jj + 1;
+            ikk2 = jj + 2;
+            ikk3 = jj + 3;
+            if (gDataBuffer[jj] == 0x00 && gDataBuffer[ikk] == 0x00 && gDataBuffer[ikk2] == 0x00 && gDataBuffer[ikk3] == 0x00)
+                break;
 
-			vclusterfree++;
-		}
+            vclusterfree++;
+        }
 
-		// Se achou algum setor livre, sai do loop
-		if (jj < vdisk->sectorSize)
-			break;
+        // Se achou algum setor livre, sai do loop
+        if (jj < vdisk->sectorSize)
+            break;
 
-		// Soma mais 1 para procurar proximo cluster
-		vfat++;
-	}
+        // Soma mais 1 para procurar proximo cluster
+        vfat++;
+    }
 
-	if (cc > vdisk->fatsize)
-		vclusterfree = ERRO_D_DISK_FULL;
-	else {
-		if (vtype == FREE_USE) {
-		    gDataBuffer[jj] = 0xFF;
-		    ikk = jj + 1;
-		    gDataBuffer[ikk] = 0xFF;
-		    ikk = jj + 2;
-		    gDataBuffer[ikk] = 0xFF;
-		    ikk = jj + 3;
-		    gDataBuffer[ikk] = 0x0F;
+    if (cc > vdisk->fatsize)
+        vclusterfree = ERRO_D_DISK_FULL;
+    else {
+        if (vtype == FREE_USE) {
+            gDataBuffer[jj] = 0xFF;
+            ikk = jj + 1;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = jj + 2;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = jj + 3;
+            gDataBuffer[ikk] = 0x0F;
 
-		    if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
-				return ERRO_D_WRITE_DISK;
-		}
-	}
+            if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                return ERRO_D_WRITE_DISK;
+        }
+    }
 
-	return (vclusterfree);
+    return (vclusterfree);
 }
 
 //-------------------------------------------------------------------------
 unsigned char fsFormat (long int serialNumber, char * volumeID)
 {
     unsigned int    j;
-    unsigned long   secCount, RootDirSectors;
-    unsigned long   root, fat, firsts, fatsize, test;
+    unsigned long   secCount;
+    unsigned long   root, fat, firsts, fatsize;
     unsigned long   Index;
-	unsigned char    SecPerClus;
+    unsigned char    SecPerClus;
 
     unsigned char *  dataBufferPointer = (unsigned char*)gDataBuffer;
 
-	// Ler MBR
+    // Ler MBR
     if (!fsSectorRead(0x00, gDataBuffer))
-		return ERRO_B_READ_DISK;
+        return ERRO_B_READ_DISK;
 
     secCount  = (unsigned long)gDataBuffer[461] << 24;
     secCount |= (unsigned long)gDataBuffer[460] << 16;
@@ -2704,28 +2726,28 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     *(dataBufferPointer + 450) = 0x0B;
 
     if (!fsSectorWrite (0x00, gDataBuffer, TRUE))
-		return ERRO_B_WRITE_DISK;
+        return ERRO_B_WRITE_DISK;
 
-	//-------------------
+    //-------------------
 
-	if (secCount >= 0x000EEB7F && secCount <= 0x01000000)	// 512 MB to 8 GB, 8 sectors per cluster
-		SecPerClus = 8;
-	else if (secCount > 0x01000000 && secCount <= 0x02000000) // 8 GB to 16 GB, 16 sectors per cluster
-		SecPerClus = 16;
-	else if (secCount > 0x02000000 && secCount <= 0x04000000) // 16 GB to 32 GB, 32 sectors per cluster
-		SecPerClus = 32;
-	else if (secCount > 0x04000000) // More than 32 GB, 64 sectors per cluster
-		SecPerClus = 64;
-	//-------------------
+    if (secCount >= 0x000EEB7F && secCount <= 0x01000000)   // 512 MB to 8 GB, 8 sectors per cluster
+        SecPerClus = 8;
+    else if (secCount > 0x01000000 && secCount <= 0x02000000) // 8 GB to 16 GB, 16 sectors per cluster
+        SecPerClus = 16;
+    else if (secCount > 0x02000000 && secCount <= 0x04000000) // 16 GB to 32 GB, 32 sectors per cluster
+        SecPerClus = 32;
+    else if (secCount > 0x04000000) // More than 32 GB, 64 sectors per cluster
+        SecPerClus = 64;
+    //-------------------
 
-	//-------------------
+    //-------------------
     fatsize = (secCount - 0x26);
     fatsize = (fatsize / ((256 * SecPerClus + 2) / 2));
     fat = 0x26 + firsts;
     root = fat + (2 * fatsize);
-	//-------------------
+    //-------------------
 
-	// Formata MicroSD
+    // Formata MicroSD
     memset (gDataBuffer, 0x00, MEDIA_SECTOR_SIZE);
 
     // Non-file system specific values
@@ -2749,7 +2771,7 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     gDataBuffer[14] = 0x26;         //Reserved sector count
     gDataBuffer[15] = 0x00;
 
-	fat = 0x26 + firsts;
+    fat = 0x26 + firsts;
 
     gDataBuffer[16] = 0x02;         //number of FATs
 
@@ -2782,8 +2804,8 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     gDataBuffer[34] = (unsigned char)((secCount / 0x10000) & 0xFF);
     gDataBuffer[35] = (unsigned char)((secCount / 0x1000000) & 0xFF);
 
-	// Sectors per FAT
-	gDataBuffer[36] = (unsigned char)(fatsize & 0xFF);
+    // Sectors per FAT
+    gDataBuffer[36] = (unsigned char)(fatsize & 0xFF);
     gDataBuffer[37] = (unsigned char)((fatsize / 0x100) & 0xFF);
     gDataBuffer[38] = (unsigned char)((fatsize / 0x10000) & 0xFF);
     gDataBuffer[39] = (unsigned char)((fatsize / 0x1000000) & 0xFF);
@@ -2861,8 +2883,8 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     gDataBuffer[510] = 0x55;
     gDataBuffer[511] = 0xAA;
 
-	if (!fsSectorWrite(firsts, gDataBuffer, FALSE))
-		return ERRO_B_WRITE_DISK;
+    if (!fsSectorWrite(firsts, gDataBuffer, FALSE))
+        return ERRO_B_WRITE_DISK;
 
     // Erase the FAT
     memset (gDataBuffer, 0x00, MEDIA_SECTOR_SIZE);
@@ -2885,7 +2907,7 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     for (j = 1; j != 0xFFFF; j--)
     {
         if (!fsSectorWrite (fat + (j * fatsize), gDataBuffer, FALSE))
-			return ERRO_B_WRITE_DISK;
+            return ERRO_B_WRITE_DISK;
     }
 
     memset (gDataBuffer, 0x00, 12);
@@ -2895,7 +2917,7 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
         for (j = 1; j != 0xFFFF; j--)
         {
             if (!fsSectorWrite (Index + (j * fatsize), gDataBuffer, FALSE))
-				return ERRO_B_WRITE_DISK;
+                return ERRO_B_WRITE_DISK;
         }
     }
 
@@ -2903,7 +2925,7 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     for (Index = 1; Index < SecPerClus; Index++)
     {
         if (!fsSectorWrite (root + Index, gDataBuffer, FALSE))
-			return ERRO_B_WRITE_DISK;
+            return ERRO_B_WRITE_DISK;
     }
 
     // Create a drive name entry in the root dir
@@ -2923,9 +2945,9 @@ unsigned char fsFormat (long int serialNumber, char * volumeID)
     gDataBuffer[23] = 0x11;
 
     if (!fsSectorWrite (root, gDataBuffer, FALSE))
-		return ERRO_B_WRITE_DISK;
+        return ERRO_B_WRITE_DISK;
 
-	return RETURN_OK;
+    return RETURN_OK;
 }
 
 //-------------------------------------------------------------------------
@@ -2948,6 +2970,7 @@ unsigned char fsSectorRead(unsigned long vsector, unsigned char* vbuffer)
 unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsigned char vtipo)
 {
     DRESULT vstatus;
+    (void)(vtipo);
 
     vstatus = disk_write(diskDrv, vbuffer, vsector, 1);
 
@@ -3157,8 +3180,8 @@ void DrawRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned in
 //-----------------------------------------------------------------------------
 void DrawRoundRect(void) {
     unsigned int xi, yi, pwidth, pheight, color;
-	unsigned char radius;
-	int tSwitch;
+    unsigned char radius;
+    int tSwitch;
     unsigned int x1 = 0, y1, xt, yt, wt;
 
     #ifdef __USE_TFT_VDG__
@@ -3171,61 +3194,61 @@ void DrawRoundRect(void) {
 
         y1 = radius;
 
-    	tSwitch = 3 - 2 * radius;
+        tSwitch = 3 - 2 * radius;
 
-    	while (x1 <= y1) {
-    	    xt = xi + radius - x1;
-    	    yt = yi + radius - y1;
-    	    SetDot(xt, yt, color);
+        while (x1 <= y1) {
+            xt = xi + radius - x1;
+            yt = yi + radius - y1;
+            SetDot(xt, yt, color);
 
-    	    xt = xi + radius - y1;
-    	    yt = yi + radius - x1;
-    	    SetDot(xt, yt, color);
+            xt = xi + radius - y1;
+            yt = yi + radius - x1;
+            SetDot(xt, yt, color);
 
             xt = xi + pwidth-radius + x1;
-    	    yt = yi + radius - y1;
-    	    SetDot(xt, yt, color);
+            yt = yi + radius - y1;
+            SetDot(xt, yt, color);
 
             xt = xi + pwidth-radius + y1;
-    	    yt = yi + radius - x1;
-    	    SetDot(xt, yt, color);
+            yt = yi + radius - x1;
+            SetDot(xt, yt, color);
 
             xt = xi + pwidth-radius + x1;
             yt = yi + pheight-radius + y1;
-    	    SetDot(xt, yt, color);
+            SetDot(xt, yt, color);
 
             xt = xi + pwidth-radius + y1;
             yt = yi + pheight-radius + x1;
-    	    SetDot(xt, yt, color);
+            SetDot(xt, yt, color);
 
-    	    xt = xi + radius - x1;
+            xt = xi + radius - x1;
             yt = yi + pheight-radius + y1;
-    	    SetDot(xt, yt, color);
+            SetDot(xt, yt, color);
 
-    	    xt = xi + radius - y1;
+            xt = xi + radius - y1;
             yt = yi + pheight-radius + x1;
-    	    SetDot(xt, yt, color);
+            SetDot(xt, yt, color);
 
-    	    if (tSwitch < 0) {
-    	    	tSwitch += (4 * x1 + 6);
-    	    } else {
-    	    	tSwitch += (4 * (x1 - y1) + 10);
-    	    	y1--;
-    	    }
-    	    x1++;
-    	}
+            if (tSwitch < 0) {
+                tSwitch += (4 * x1 + 6);
+            } else {
+                tSwitch += (4 * (x1 - y1) + 10);
+                y1--;
+            }
+            x1++;
+        }
 
         xt = xi + radius;
         yt = yi + pheight;
         wt = pwidth - (2 * radius);
-    	DrawHoriLine(xt, yi, wt, color);		// top
-    	DrawHoriLine(xt, yt, wt, color);	// bottom
+        DrawHoriLine(xt, yi, wt, color);        // top
+        DrawHoriLine(xt, yt, wt, color);    // bottom
 
         xt = xi + pwidth;
         yt = yi + radius;
         wt = pheight - (2 * radius);
-    	DrawVertLine(xi, yt, wt, color);		// left
-    	DrawVertLine(xt, yt, wt, color);	// right
+        DrawVertLine(xi, yt, wt, color);        // left
+        DrawVertLine(xt, yt, wt, color);    // right
     #endif
 }
 
@@ -3273,6 +3296,12 @@ void SelRect(unsigned int x, unsigned int y, unsigned int pwidth, unsigned int p
 
 //-----------------------------------------------------------------------------
 void PutImage(unsigned char* vimage, unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight) {
+    (void)(vimage);
+    (void)(x);
+    (void)(y);
+    (void)(pwidth);
+    (void)(pheight);
+
     #ifdef __USE_TFT_VDG__
         /* ver como fazer */
     #endif
@@ -3280,7 +3309,7 @@ void PutImage(unsigned char* vimage, unsigned int x, unsigned int y, unsigned in
 
 //-----------------------------------------------------------------------------
 void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) {
-    unsigned int ix, iy, iz, pw, ph;
+    unsigned int ix, iz, pw, ph;
     unsigned char* pimage;
     unsigned char ic, igh;
 
@@ -3296,13 +3325,13 @@ void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) {
         paramVDG[1] =  0xDE;
         paramVDG[2] =  ic;
         igh = 3;
-    	for (ix = 0; ix < 576; ix++) {
+        for (ix = 0; ix < 576; ix++) {
             paramVDG[igh++] =  *pimage++ & 0x00FF;
             paramVDG[igh++] =  *pimage++ & 0x00FF;
             iz++;
 
-    		if (iz == 64 && ic < 8) {
-    	        ic++;
+            if (iz == 64 && ic < 8) {
+                ic++;
 
                 commVDG(paramVDG);    
             
@@ -3312,8 +3341,8 @@ void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) {
                 igh = 3;
 
                 iz = 0;
-    		}
-    	}
+            }
+        }
         commVDG(paramVDG);    
 
         // Mostra a Imagem
@@ -3515,7 +3544,6 @@ void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
 unsigned char editortela(void) {
     unsigned char vresp = 1;
     unsigned char vx, cc, vpos, vposiconx, vposicony;
-    unsigned int vbytepic;
     unsigned char *ptr_prg;
 
     #ifdef __USE_TFT_VDG__
@@ -3578,7 +3606,7 @@ unsigned char editortela(void) {
 
 //-------------------------------------------------------------------------
 unsigned char new_menu(void) {
-    unsigned int vx, vy, lc, vposicony, mx, my, menyi[8], menyf[8];
+    unsigned int vy, lc, vposicony, mx, my, menyi[8], menyf[8];
     unsigned char vpos = 0, vresp, mpos;
 
     #ifdef __USE_TFT_VDG__
@@ -3700,8 +3728,6 @@ unsigned char new_menu(void) {
 //------------------------------------------------------------------------
 void VerifyTouchLcd(unsigned char vtipo) {
     unsigned int vbytepic = 0;
-    unsigned char vtec;
-    char* sqtdtam;
 
     vbytepic = 0;
 
@@ -3871,7 +3897,7 @@ void del_icon(void) {
   if (temdelete) {
     // Aguardar Touch
     vwaittouch = 1;
-  	VerifyTouchLcd(WHAITTOUCH);
+    VerifyTouchLcd(WHAITTOUCH);
 
     // Verificar Posi?o
     vposiconx = COLINIICONS;
@@ -4046,67 +4072,66 @@ void executeCmd(void) {
 //-------------------------------------------------------------------------
 unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
 {
-	unsigned int i, ii = 0, iii, xi, yi, xf, xm, yf, ym, pwidth, pheight, xib, yib, xic, yic;
-	unsigned char qtdnl, maxlenstr;
-	unsigned char qtdcstr[8], poscstr[8], cc, dd, vbty = 0;
-	unsigned char *bstrptr;
+    unsigned int i, ii = 0, iii, xi, yi, xm, yf, ym, pwidth, pheight, xib, yib;
+    unsigned char qtdnl, maxlenstr;
+    unsigned char qtdcstr[8], poscstr[8], cc, dd, vbty = 0;
+    unsigned char *bstrptr;
 
     #ifdef __USE_TFT_VDG__
-    	qtdnl = 1;
-    	maxlenstr = 0;
-    	qtdcstr[1] = 0;
-    	poscstr[1] = 0;
-    	i = 0;
+        qtdnl = 1;
+        maxlenstr = 0;
+        qtdcstr[1] = 0;
+        poscstr[1] = 0;
+        i = 0;
 
         for (ii = 0; ii <= 7; ii++)
             vbuttonwin[ii] = 0;
 
         bstrptr = bstr;
-    	while (*bstrptr)
-    	{
-    		qtdcstr[qtdnl]++;
+        while (*bstrptr)
+        {
+            qtdcstr[qtdnl]++;
 
-    		if (qtdcstr[qtdnl] > 26)
-    			qtdcstr[qtdnl] = 26;
+            if (qtdcstr[qtdnl] > 26)
+                qtdcstr[qtdnl] = 26;
 
-    		if (qtdcstr[qtdnl] > maxlenstr)
-    			maxlenstr = qtdcstr[qtdnl];
+            if (qtdcstr[qtdnl] > maxlenstr)
+                maxlenstr = qtdcstr[qtdnl];
 
-    		if (*bstrptr == '\n')
-    		{
-    			qtdcstr[qtdnl]--;
-    			qtdnl++;
+            if (*bstrptr == '\n')
+            {
+                qtdcstr[qtdnl]--;
+                qtdnl++;
 
-    			if (qtdnl > 6)
-    				qtdnl = 6;
+                if (qtdnl > 6)
+                    qtdnl = 6;
 
-    			qtdcstr[qtdnl] = 0;
-    			poscstr[qtdnl] = i + 1;
-    		}
+                qtdcstr[qtdnl] = 0;
+                poscstr[qtdnl] = i + 1;
+            }
 
             bstrptr++;
             i++;
-    	}
+        }
 
-    	if (maxlenstr > 26)
-    		maxlenstr = 26;
+        if (maxlenstr > 26)
+            maxlenstr = 26;
 
-    	if (qtdnl > 6)
-    		qtdnl = 6;
+        if (qtdnl > 6)
+            qtdnl = 6;
 
-    	pwidth = maxlenstr * 8;
-    	pwidth = pwidth + 2;
-    	xm = pwidth / 2;
-    	xi = 160 - xm - 1;
-    	xf = 160 + xm - 1;
+        pwidth = maxlenstr * 8;
+        pwidth = pwidth + 2;
+        xm = pwidth / 2;
+        xi = 160 - xm - 1;
 
-    	pheight = 10 * qtdnl;
-    	pheight = pheight + 20;
-    	ym = pheight / 2;
-    	yi = 120 - ym - 1;
-    	yf = 120 + ym - 1;
+        pheight = 10 * qtdnl;
+        pheight = pheight + 20;
+        ym = pheight / 2;
+        yi = 120 - ym - 1;
+        yf = 120 + ym - 1;
 
-    	// Desenha Linha Fora
+        // Desenha Linha Fora
         SaveScreen(0x03,xi+2,yi,pwidth,pheight);
 
         FillRect(xi,yi,pwidth,pheight,White);
@@ -4116,39 +4141,39 @@ unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
         vparam[3] = pheight;
         vparam[4] = 2;
         vparam[5] = Black;
-    	DrawRoundRect();  // rounded rectangle around text area
+        DrawRoundRect();  // rounded rectangle around text area
 
-    	// Escreve Texto Dentro da Caixa de Mensagem
-    	for (i = 1; i <= qtdnl; i++)
-    	{
-    		xib = xi + xm;
-    		xib = xib - ((qtdcstr[i] * 8) / 2);
-    		yib = yi + 2 + (10 * (i - 1));
+        // Escreve Texto Dentro da Caixa de Mensagem
+        for (i = 1; i <= qtdnl; i++)
+        {
+            xib = xi + xm;
+            xib = xib - ((qtdcstr[i] * 8) / 2);
+            yib = yi + 2 + (10 * (i - 1));
 
             locatexy(xib, yib);
             bstrptr = bstr + poscstr[i];
-    		for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
+            for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
                 writecxy(8, *bstrptr++, Black, White);
-    	}
+        }
 
-    	// Desenha Botoes
+        // Desenha Botoes
         i = 1;
         vbbutton = bbutton;
-    	while (vbbutton)
-    	{
-    		xib = xi + 2 + (44 * (i - 1));
-    		yib = yf - 12;
+        while (vbbutton)
+        {
+            xib = xi + 2 + (44 * (i - 1));
+            yib = yf - 12;
             vbty = yib;
-    		i++;
+            i++;
 
             drawButtons(xib, yib);
-    	}
+        }
 
       ii = 0;
 
       if (!btime) {
         while (!ii) {
-      	  VerifyTouchLcd(WHAITTOUCH);
+          VerifyTouchLcd(WHAITTOUCH);
 
           for (i = 1; i <= 7; i++) {
             if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbty && vposty <= (vbty + 10)) {
@@ -4177,8 +4202,7 @@ unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime)
 void showWindow(void)
 {
 	unsigned int i, ii, xib, yib, x1, y1, pwidth, pheight;
-    unsigned char cc = 0, *bstr, bbutton;
-    char* sqtdtam;
+    unsigned char *bstr, bbutton;
 
     #ifdef __USE_TFT_VDG__
         bstr = vparamstr;
@@ -4189,7 +4213,7 @@ void showWindow(void)
         bbutton = vparam[4];
 
         // Desenha a Janela
-    	FillRect(x1, y1, pwidth, pheight, vcorwb);
+        FillRect(x1, y1, pwidth, pheight, vcorwb);
         DrawRect(x1, y1, pwidth, pheight, vcorwf);
 
         if (*bstr) {
@@ -4201,17 +4225,17 @@ void showWindow(void)
         for (ii = 0; ii <= 7; ii++)
             vbuttonwin[ii] = 0;
 
-    	// Desenha Botoes
+        // Desenha Botoes
         vbbutton = bbutton;
-    	while (vbbutton)
-    	{
-    		xib = x1 + 2 + (44 * (i - 1));
-    		yib = (y1 + pheight) - 12;
+        while (vbbutton)
+        {
+            xib = x1 + 2 + (44 * (i - 1));
+            yib = (y1 + pheight) - 12;
             vbuttonwiny = yib;
-    		i++;
+            i++;
 
             drawButtons(xib, yib);
-    	}
+        }
     #endif
 }
 
@@ -4226,52 +4250,52 @@ void drawButtons(unsigned int xib, unsigned int yib) {
         vparam[3] = 10;
         vparam[4] = 1;
         vparam[5] = Black;
-    	FillRect(xib, yib, 42, 10, White);
-    	DrawRoundRect();  // rounded rectangle around text area
+        FillRect(xib, yib, 42, 10, White);
+        DrawRoundRect();  // rounded rectangle around text area
 
-    	// Escreve Texto do Bot?
-    	if (vbbutton & BTOK)
-    	{
-    		writesxy(xib + 16 - 6, yib + 2,8,"OK",Black,White);
+        // Escreve Texto do Bot?
+        if (vbbutton & BTOK)
+        {
+            writesxy(xib + 16 - 6, yib + 2,8,"OK",Black,White);
             vbbutton = vbbutton & 0xFE;    // 0b11111110
             vbuttonwin[1] = xib;
-    	}
-    	else if (vbbutton & BTSTART)
-    	{
-    		writesxy(xib + 16 - 15, yib + 2,8,"START",Black,White);
+        }
+        else if (vbbutton & BTSTART)
+        {
+            writesxy(xib + 16 - 15, yib + 2,8,"START",Black,White);
             vbbutton = vbbutton & 0xDF;    // 0b11011111
             vbuttonwin[6] = xib;
-    	}
-    	else if (vbbutton & BTCLOSE)
-    	{
-    		writesxy(xib + 16 - 15, yib + 2,8,"CLOSE",Black,White);
+        }
+        else if (vbbutton & BTCLOSE)
+        {
+            writesxy(xib + 16 - 15, yib + 2,8,"CLOSE",Black,White);
             vbbutton = vbbutton & 0xBF;    // 0b10111111
             vbuttonwin[7] = xib;
-    	}
-    	else if (vbbutton & BTCANCEL)
-    	{
-    		writesxy(xib + 16 - 12, yib + 2,8,"CANC",Black,White);
+        }
+        else if (vbbutton & BTCANCEL)
+        {
+            writesxy(xib + 16 - 12, yib + 2,8,"CANC",Black,White);
             vbbutton = vbbutton & 0xFD;    // 0b11111101
             vbuttonwin[2] = xib;
-    	}
-    	else if (vbbutton & BTYES)
-    	{
-    		writesxy(xib + 16 - 9, yib + 2,8,"YES",Black,White);
+        }
+        else if (vbbutton & BTYES)
+        {
+            writesxy(xib + 16 - 9, yib + 2,8,"YES",Black,White);
             vbbutton = vbbutton & 0xFB;    // 0b11111011
             vbuttonwin[3] = xib;
-    	}
-    	else if (vbbutton & BTNO)
-    	{
-    		writesxy(xib + 16 - 6, yib + 2,8,"NO",Black,White);
+        }
+        else if (vbbutton & BTNO)
+        {
+            writesxy(xib + 16 - 6, yib + 2,8,"NO",Black,White);
             vbbutton = vbbutton & 0xF7;    // 0b11110111
             vbuttonwin[4] = xib;
-    	}
-    	else if (vbbutton & BTHELP)
-    	{
-    		writesxy(xib + 16 - 12, yib + 2,8,"HELP",Black,White);
+        }
+        else if (vbbutton & BTHELP)
+        {
+            writesxy(xib + 16 - 12, yib + 2,8,"HELP",Black,White);
             vbbutton = vbbutton & 0xEF;    // 0b11101111
             vbuttonwin[5] = xib;
-    	}
+        }
     #endif
 }
 

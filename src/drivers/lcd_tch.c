@@ -109,12 +109,12 @@ void TP_GetAdXY(int *x,int *y)
     ady = Read_XY(CHY);
 
 	if (adx > 0) 
-        *x = ((adx - 25) /*/ 1.958f*/ );    // Era 1.958f
+        *x = ((adx - 25) / 1.958f );    // Era 1.958f
 	else
 		*x = adx;
 
 	if (ady > 0)
-	    *y = ((ady - 55) /*/ 1.375f*/ );    // Era 1.375f  
+	    *y = ((ady - 55) / 1.375f );    // Era 1.375f  
 	else
 		*y = ady;
 }
@@ -132,8 +132,8 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
 {
     int m0,m1,m2,TP_X[1],TP_Y[1],temp[3];
     int buffer[2][9]={{0},{0}};
-    int ibb, iz, ix;
-    int dfx, dfy;
+/*    int ibb, iz, ix;
+    int dfx, dfy;*/
 
     if (screenPtr == NULL) 
         screenPtr = &screen;
@@ -204,7 +204,7 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
     	        screenPtr->y=(temp[1]+temp[2])/2;
 
         // Por causa do problema na divisão do Processador do Raspberry PI, tive que fazer essa GAMBI
-        dfy = 0;
+/*        dfy = 0;
         iz = 0;
         ix = 0;
         for(ibb = 0; ibb <= screenPtr->y; ibb++) 
@@ -244,15 +244,7 @@ unsigned char Read_Ads7843(Coordinate * screenPtr)
                 ix = 0;
             }
         }
-        screenPtr->x = dfx;
-
-/*        dfx = (double)screenPtr->x;
-        dfx = dfx / 1.375f;
-        screenPtr->x = (int)dfx;
-
-        dfy = (double)screenPtr->y;
-        dfy = dfy / 1.958f;
-        screenPtr->y = (int)dfy;*/
+        screenPtr->x = dfx;*/
 
         return 1;
     }

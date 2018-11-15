@@ -394,9 +394,9 @@ void log_error(int error_id) {
 	io_cli();
 	i = 0;
 	while(s[i]!=0) {
-		writechar((int)s[i++], (void*)1);
+		writechar((int)s[i++]);
 	}
-	writechar((int)'0'+error_id, (void*)1); // error_id must be between 0 and 9;
+	writechar((int)'0'+error_id); // error_id must be between 0 and 9;
 	while(1) {}
 }
  

@@ -17,6 +17,7 @@
 #include "drivers/rpi-usb-api.h"            // This units header
 #include "drivers/rpi-usb.h"			// This units header
 #include <kernel/interrupts.h>
+#include <kernel/timer.h>
 
 uint32_t RPi_IO_Base_Addr = 0x20000000;
 uint32_t RPi_ARM_TO_GPU_Alias = 0x40000000;			// RPI ARM_TO_GPU_Alias auto-detected by SmartStartxx.S
@@ -174,7 +175,7 @@ struct __attribute__((__packed__, aligned(4))) CoreAhb {
 			} TransferEmptyLevel : 1;								// @7
 			volatile enum EmptyLevel PeriodicTransferEmptyLevel : 1;// @8
 			volatile unsigned _reserved9_20 : 12;					// @9
-			volatile bool remmemsupp : 1;							// @21
+ 			volatile bool remmemsupp : 1;							// @21
 			volatile bool notialldmawrit : 1;						// @22
 			volatile enum {
 				Incremental = 0,
@@ -1060,12 +1061,12 @@ RESULT HcdProcessRootHubMessage (uint8_t* buffer, uint32_t bufferLength, struct 
 					break;
 				case FeatureSuspend:
 					DWC_POWER_AND_CLOCK->Raw32 = 0;
-					Delayus(5000);
+					timer_wait(5000);
 					tempPort = *DWC_HOST_PORT;						// Read the host port
 					tempPort.Raw32 &= HOSTPORTMASK;					// Cleave off all the triggers
 					tempPort.Resume = true;							// Set the bit we want
 					*DWC_HOST_PORT = tempPort;						// Write the value back
-					Delayus(100000);
+					timer_wait(100000);
 					tempPort = *DWC_HOST_PORT;						// Read the host port
 					tempPort.Raw32 &= HOSTPORTMASK;					// Cleave off all the triggers
 					tempPort.Suspend = false;						// Clear the bit we want
@@ -1126,7 +1127,7 @@ RESULT HcdProcessRootHubMessage (uint8_t* buffer, uint32_t bufferLength, struct 
 					tempPower.EnableSleepClockGating = false;		// Turn off sleep clock gating if on
 					tempPower.StopPClock = false;					// Turn off stop clock
 					*DWC_POWER_AND_CLOCK = tempPower;				// Write back to register
-					Delayus(10000);								// Small delay
+					timer_wait(10000);								// Small delay
 					DWC_POWER_AND_CLOCK->Raw32 = 0;					// Now clear everything
 
 					tempPort = *DWC_HOST_PORT;						// Read the host port
@@ -1135,7 +1136,7 @@ RESULT HcdProcessRootHubMessage (uint8_t* buffer, uint32_t bufferLength, struct 
 					tempPort.Reset = true;							// Set bit we want
 					tempPort.Power = true;							// Set the bit we want
 					*DWC_HOST_PORT = tempPort;						// Write the value back
-					Delayus(60000);
+					timer_wait(60000);
 					tempPort = *DWC_HOST_PORT;						// Read the host port
 					tempPort.Raw32 &= HOSTPORTMASK;					// Cleave off all the triggers
 					tempPort.Reset = false;							// Clear bit we want
@@ -1296,6 +1297,7 @@ RESULT HCDReset(void) {
 	original_tick = timer_getTickCount64();							// Hold original tickcount
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
+			LOG("Aqui 0");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->AhbMasterIdle == false);				// Keep looping until idle or timeout
@@ -1306,6 +1308,7 @@ RESULT HCDReset(void) {
 	original_tick = timer_getTickCount64();							// Hold original tickcount
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
+			LOG("Aqui 1");
 			return ErrorTimeout;									// Return timeout error
 		}
 		temp = *DWC_CORE_RESET;										// Read reset register
@@ -1327,6 +1330,7 @@ RESULT HCDTransmitFifoFlush(enum CoreFifoFlush fifo) {
 	original_tick = timer_getTickCount64();							// Hold original tick count
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
+			LOG("Aqui 2");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->TransmitFifoFlush == true);			// Loop until flush signal low or timeout
@@ -1346,6 +1350,7 @@ RESULT HCDReceiveFifoFlush(void) {
 	original_tick = timer_getTickCount64();							// Hold original tick count
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
+			LOG("Aqui 3");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->ReceiveFifoFlush == true);				// Loop until flush signal low or timeout
@@ -1518,7 +1523,7 @@ RESULT HCDStart (void) {
 	tempPort.Raw32 &= HOSTPORTMASK;									// Cleave off all the temp bits	
 	tempPort.Reset = true;											// Set the reset bit
 	*DWC_HOST_PORT = tempPort;										// Write value to port
-	Delayus(60000);												// 60ms delay
+	timer_wait(60000);												// 60ms delay
 	tempPort = *DWC_HOST_PORT;										// Fetch host port 
 	tempPort.Raw32 &= HOSTPORTMASK;									// Cleave off all the temp bits	
 	tempPort.Reset = false;											// Clear the reset bit
@@ -1579,10 +1584,15 @@ RESULT HCDCheckErrorAndAction(struct ChannelInterrupts interrupts, bool packetSp
 		!interrupts.FrameOverrun) {									// No transmission error
 		/* If endpoint NAK nothing wrong just demanding a retry */
 		if (interrupts.NegativeAcknowledgement)						// Endpoint device NAK ..nothing wrong
+		{
 			return ErrorTransmission;								// Simple tranmission error .. resend
+		}	
 		/* Next deal with device not ready case */
 		if (interrupts.NotYet)
+		{
 			return ErrorTransmission;								// Endpoint device not yet ... resend
+		}
+		LOG("Aqui 4");
 		return ErrorTimeout;										// Let guess program just timed out
 	}
 	/* Everything else updates global count as it is serious */
@@ -1618,9 +1628,10 @@ RESULT HCDWaitOnTransmissionResult(uint32_t timeout, uint8_t channel, struct Cha
 	struct ChannelInterrupts tempInt;
 	uint64_t original_tick = timer_getTickCount64();					// Hold original tick count
 	do {
-		Delayus(100);
+		timer_wait(100);
 		if (tick_difference(original_tick, timer_getTickCount64()) > timeout) {
 			if (IntFlags) *IntFlags = tempInt;						// Return interrupt flags if requested					
+			LOG("Aqui 5");
 			return ErrorTimeout;									// Return timeout error
 		}
 		tempInt = DWC_HOST_CHANNEL[channel].Interrupt;				// Read and hold interterrupt
@@ -1766,8 +1777,8 @@ RESULT HCDChannelTransfer(const struct UsbPipe pipe, const struct UsbPipeControl
 			//if (result) LOG("Result: %i Action: 0x%08lx tempInt: 0x%08lx tempSplit: 0x%08lx Bytes sent: %i\n",
 			//	result, sendCtrl.RawUsbSendContol, tempInt.RawInterrupt, tempSplit.RawSplitControl, RESULT ? 0 : DWC_HOST_CHANNEL[pipectrl.Channel].TransferSize.TransferSize);
 			if (sendCtrl.ActionFatalError) return result;			// Fatal error occured bail
-			if (sendCtrl.LongerDelay) Delayus(10000);			// Not yet response slower delay
-				else Delayus(2500);								// Small delay between split resends
+			if (sendCtrl.LongerDelay) timer_wait(10000);			// Not yet response slower delay
+				else timer_wait(2500);								// Small delay between split resends
 		}
 
 		if (sendCtrl.Success) {										// Send successful adjust buffer position
@@ -1821,7 +1832,7 @@ RESULT HCDSumbitControlMessage (const struct UsbPipe pipe,			// Pipe structure (
 	intPipeCtrl.Direction = USB_DIRECTION_OUT;						// Set pipe to out
 	if ((result = HCDChannelTransfer(pipe, intPipeCtrl,
 		(uint8_t*)request, 8, USB_PID_SETUP)) != OK) {				// Send the 8 byte setup request packet
-		LOG("HCD: SETUP packet to device: %#x req: %#x req Type: %#x Speed: %i PacketSize: %i LowNode: %i LowPort: %i Error: %i\n",
+		LOG("HCD: SETUP packet to device: %x req: %x req Type: %x Speed: %i PacketSize: %i LowNode: %i LowPort: %i Error: %i\n",
 			pipe.Number, request->Request, request->Type, pipe.Speed, pipe.MaxSize, pipe.lowSpeedNodePoint, pipe.lowSpeedNodePort, result);// Some parameter issue
 		return OK;
 	}
@@ -1955,7 +1966,7 @@ RESULT HCDReadHubPortStatus (const struct UsbPipe pipe,				// Control pipe to th
 		&transfer)) != OK)											// We will check transfer size so pass in pointer to our local
 	{
 		dwc_release_channel(pipectrl.Channel);						// Release the channel
-		LOG("HCD Hub read status failed on device: %i, port: %i, Result: %#x, Pipe Speed: %#x, Pipe MaxPacket: %#x\n",
+		LOG("HCD Hub read status failed on device: %i, port: %i, Result: %x, Pipe Speed: %x, Pipe MaxPacket: %x\n",
 			pipe.Number, port, result, pipe.Speed, pipe.MaxSize);	// Log any error
 		return result;												// Return error result
 	}
@@ -2309,7 +2320,7 @@ RESULT HubPortReset(struct UsbDevice *device, uint8_t port) {
 		}
 		timeout = 0;
 		do {
-			Delayus(20000);
+			timer_wait(20000);
 			if ((result = HCDReadHubPortStatus(device->Pipe0, port + 1, &portStatus.Raw32)) != OK) {
 				LOG("HUB: Hub failed to get status (4) for %s.Port%d.\n", UsbGetDescription(device), port + 1);
 				return result;
@@ -2386,7 +2397,7 @@ RESULT HubPortConnectionChanged(struct UsbDevice *device, uint8_t port) {
 		return result;
 	}
 
-	LOG_DEBUG("HUB: %s. Device:%i Port:%d Status %04x:%04x.\n", UsbGetDescription(device), device->Pipe0.Number, port, portStatus.RawStatus, portStatus.RawChange);
+	LOG("HUB: %s. Device:%i Port:%d Status %04x:%04x.\n", UsbGetDescription(device), device->Pipe0.Number, port, portStatus.RawStatus, portStatus.RawChange);
 
 	if (portStatus.Status.HighSpeedAttatched) data->Children[port]->Pipe0.Speed = USB_SPEED_HIGH;
 	else if (portStatus.Status.LowSpeedAttatched) {
@@ -2574,7 +2585,7 @@ RESULT EnumerateHub (struct UsbDevice *device) {
 			LOG("HUB: device: %i could not power Port%d.\n",
 				device->Pipe0.Number, i + 1);						// Log error
 	}
-	Delayus(data->Descriptor.PowerGoodDelay * 2000);				// Every hub has a different power stability delay
+	timer_wait(data->Descriptor.PowerGoodDelay * 2000);				// Every hub has a different power stability delay
 
 	for (int port = 0; port < data->MaxChildren; port++) {			// Now check for new device to enumerate on each port
 		HubCheckConnection(device, port);							// Run connection check on each port
@@ -2625,7 +2636,7 @@ RESULT EnumerateDevice(struct UsbDevice *device, struct UsbDevice* ParentHub, ui
 		&transferred);												// Pass in pointer to get bytes transferred back
 	if ((result != OK) || (transferred != 8)) {						// This should pass on any valid device
 		dwc_release_channel(pipectrl.Channel);						// Release the channel we are exiting 
-		LOG("Enumeration: Step 1 on device %i failed, Result: %#x.\n",
+		LOG("Enumeration: Step 1 on device %i failed, Result: %x.\n",
 			address, result);										// Log any error
 		return result;												// Fatal enumeration error of this device
 	}
@@ -2646,12 +2657,12 @@ RESULT EnumerateDevice(struct UsbDevice *device, struct UsbDevice* ParentHub, ui
 	/*			USB ENUMERATION BY THE BOOK STEP 3 = Set Device Address			*/
 	if ((result = HCDSetAddress(device->Pipe0, pipectrl.Channel, address)) != OK) {
 		dwc_release_channel(pipectrl.Channel);					   // Release the channel we are exiting
-		LOG("Enumeration: Failed to assign address to %#x.\n", address);// Log the error
+		LOG("Enumeration: Failed to assign address to %x.\n", address);// Log the error
 		device->Pipe0.Number = address;								// Set device number just so it stays valid
 		return result;												// Fatal enumeration error of this device
 	}
 	device->Pipe0.Number = address;									// Device successfully addressed so put it back to control pipe								
-	Delayus(10000);												// Allows time for address to propagate.
+	timer_wait(10000);												// Allows time for address to propagate.
 	device->Config.Status = USB_STATUS_ADDRESSED;					// Our enumeration status in now addressed
 
 	/*	USB ENUMERATION BY THE BOOK STEP 4 = Read Device Descriptor At Address	*/
@@ -2666,7 +2677,7 @@ RESULT EnumerateDevice(struct UsbDevice *device, struct UsbDevice* ParentHub, ui
 		&transferred, true);										// Pass in pointer to get bytes transferred back
 	if ((result != OK) || (transferred != sizeof(device->Descriptor))) {// This should pass on any valid device
 		dwc_release_channel(pipectrl.Channel);						// Release the channel we are exiting
-		LOG("Enumeration: Step 4 on device %i failed, Result: %#x.\n",
+		LOG("Enumeration: Step 4 on device %i failed, Result: %x.\n",
 			device->Pipe0.Number, result);							// Log any error
 		return result;												// Fatal enumeration error of this device
 	}
@@ -2765,7 +2776,7 @@ RESULT EnumerateDevice(struct UsbDevice *device, struct UsbDevice* ParentHub, ui
 	/*	  USB ENUMERATION BY THE BOOK STEP 6 = Set Configuration to Device		*/
 	if ((result = HCDSetConfiguration(device->Pipe0, pipectrl.Channel, configNum)) != OK) {
 		dwc_release_channel(pipectrl.Channel);					   // Release the channel we are exiting
-		LOG("HCD: Failed to set configuration %#x for device %i.\n",
+		LOG("HCD: Failed to set configuration %x for device %i.\n",
 			configNum, device->Pipe0.Number);
 		return result;
 	}
@@ -2896,7 +2907,7 @@ RESULT HCDGetDescriptor (const struct UsbPipe pipe,					// Pipe structure to sen
 			result = ErrorGeneral;									// For some strange reason descriptor type is not right
 		if (result != OK) {											// RESULT in error
 			dwc_release_channel(pipectrl.Channel);					// Release the channel
-			LOG("HCD: Fail to get descriptor %#x:%#x recepient: %#x, device:%i. RESULT %#x.\n",
+			LOG("HCD: Fail to get descriptor %x:%x recepient: %x, device:%i. RESULT %x.\n",
 				type, index, recipient, pipe.Number, result);		// Log any error
 			return result;											// Error reading descriptor header
 		}
@@ -2920,7 +2931,7 @@ RESULT HCDGetDescriptor (const struct UsbPipe pipe,					// Pipe structure to sen
 	if (length != transfer) result = ErrorTransmission; 			// The requested length does not match read length
 	if (result != OK) {
 		dwc_release_channel(pipectrl.Channel);						// Release the channel
-		LOG("HCD: Failed to get descriptor %#x:%#x for device:%i. RESULT %#x.\n",
+		LOG("HCD: Failed to get descriptor %x:%x for device:%i. RESULT %x.\n",
 			type, index, pipe.Number, result);						// Log any error
 	}
 	dwc_release_channel(pipectrl.Channel);							// Release the channel
@@ -3454,7 +3465,17 @@ uint64_t tick_difference (uint64_t us1, uint64_t us2)
 	return us2 - us1;												// Return difference between values
 }
 
-void USB_EN_INIT() 
+static void usb_irq_handler(void) 
 {
-//    register_irq_handler(ARM_TIMER, lcd_tch_irq_handler, lcd_tch_irq_clearer);	
+	//
+}
+
+static void usb_irq_clearer(void) 
+{
+    //
+}
+
+void USB_EN_INT(void) 
+{	
+    register_irq_handler(USB_CONTROLER, usb_irq_handler, usb_irq_clearer);	
 }

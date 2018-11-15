@@ -17,7 +17,7 @@ inline void io_cli()
 
 extern unsigned char extDebugActiv;
 
-extern void writechar(int c, void *stream);
+extern void writechar(int c);
 extern void writestr(char *msgs);
 
 void waitCycle(int32_t count);

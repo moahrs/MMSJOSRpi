@@ -7,6 +7,9 @@
 #include <drivers/lcd_vdg_fontes.h>  
 #include <kernel/interrupts.h>
 #include "common/mylib.h"
+#include <kernel/timer.h>
+
+unsigned int pOldData = 0;
 
 static void lcd_tch_irq_handler(void) {
     if (irqTchOn)
@@ -370,9 +373,9 @@ void Write_Data(unsigned int wdata)
 
   	bcm2835_gpio_write(TFT_RD,1);
   	bcm2835_gpio_write(TFT_DC,1); 
-  	Write_Bytes_GPIO(wdata);
+    Write_Bytes_GPIO(wdata);
   	bcm2835_gpio_write(TFT_WR,0);
-  	Delayns(35); 
+  	Delayns(15); 
   	bcm2835_gpio_write(TFT_WR,1);
 }
 
@@ -514,12 +517,26 @@ void TFT_Init(void)
 
     TFT_Fill(Black);
 
+    iy = 0;
+    vyy = 10;
+    for (ix = 0; ix <= 839; ix++) {
+      pvideo[iy] = utlogo[ix];
+      iy++;
+      if (iy == 320) {
+        TFT_Image(vyy, 0, 40, 8, (unsigned int*)pvideo);
+        vyy = 18;
+        iy = 0;
+      }
+    }
+
+    TFT_Image(26, 0, 40, 5, (unsigned int*)pvideo);
+
     TFT_Text((char*)"VDG UT-300 v1.6a\0",0,46,8,White,Black);
     TFT_Text((char*)"TFT GLCD - SSD1289\0",10,46,8,White,Black);
     TFT_Text((char*)"172KB VRAM - 64K Colors\0",20,46,8,White,Black);
     TFT_Text((char*)"www.utilityinf.com.br\0",30,46,8,Red,Black);
     
-    Delays(2);
+    timer_wait(2000000);
 
     TFT_Fill(Black);    
 
@@ -866,49 +883,33 @@ void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned
 
 //-------------------------------------------------------------------
 void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y) {
-/*    unsigned int iy,xf,yf;
+    unsigned int iy,xf,yf;
 
     yf = pos_y + dim_x;
     xf = pos_x + dim_y;
 
+    bcm2835_gpio_write(TFT_CS,0);
+
     for (ix = pos_x; ix <= xf; ix++) {
-	    TFT_Set_Address(ix,pos_y,ix,yf);
-
-		// read actual position
-	    TFT_DP_Lo0_Direction = 0xFF;
-	    TFT_DP_Lo1_Direction = 0xFF;
-	    TFT_DP_Lo_Direction = 0xFF;
-	    TFT_DP_Hi_Direction = 0xFF;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
-        // dummy read
-        Read_Data();	
-
-        // real read
 	    for (iy = pos_y; iy <= yf; iy++) {
-	        pvideo[iy] = Read_Data();
+	        pvideo[iy] = pBaseVideoMem[0][iy][ix];
 	    }
 
-        // write in the new position inverted
-	    TFT_DP_Lo0_Direction = 0x00;
-	    TFT_DP_Lo1_Direction = 0x00;
-	    TFT_DP_Lo_Direction = 0x00;
-	    TFT_DP_Hi_Direction = 0x00;
-		TFT_SCK_Dir = 0x00;
-		TFT_SDI_Dir = 0x01;
-
 	    TFT_Set_Address(ix,pos_y,ix,yf);
 	    for (iy = pos_y; iy <= yf; iy++) {
+          pBaseVideoAddrX = iy;
+          pBaseVideoAddrY = ix;
 	        Write_Data(~pvideo[iy]);
 	    }
-    }*/
+    }
+
+    bcm2835_gpio_write(TFT_CS,1);
 }
 
 //-------------------------------------------------------------------
 void TFT_Scroll(unsigned char qtdlin) 
 {
-    unsigned int iy,xo,xd,xf,yf;
+    unsigned int iy,xo,xd,xf,yf,dd;
 
     xd = 0;
     xo = qtdlin;
@@ -919,18 +920,14 @@ void TFT_Scroll(unsigned char qtdlin)
 
     for (ix = xo; ix <= xf; ix++) 
     {
-  	    for (iy = 0; iy <= yf; iy++) 
-        {
-            pvideo[iy] = pBaseVideoMem[0][iy][ix];
-  	    }
-
         xd = ix - qtdlin;
-	      TFT_Set_Address(xd,0,xd,yf);
+        TFT_Set_Address(xd,0,xd,yf);
   	    for (iy = 0; iy <= yf; iy++) 
         {
+            dd = pBaseVideoMem[0][iy][ix];
             pBaseVideoAddrX = iy;
             pBaseVideoAddrY = xd;
-  	        Write_Data(pvideo[iy]);
+            Write_Data(dd);
   	    }
     }
 

@@ -1,3 +1,10 @@
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wpointer-sign"
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough="
+#pragma GCC diagnostic ignored "-Wempty-body"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include <stdint.h>
 
 #ifndef STDLIB_H

@@ -208,4 +208,4 @@ typedef struct
 extern unsigned char * _strcat (unsigned char * dst, char * cp, char * src);
 extern unsigned int bcd2dec(unsigned int bcd);
 extern unsigned int datetimetodir(unsigned char hr_day, unsigned char min_month, unsigned char sec_year, unsigned char vtype);
-extern void writechar(int c, void *stream);
+extern void writechar(int c);

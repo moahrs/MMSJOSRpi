@@ -25,21 +25,39 @@ mBoxInfoResp get_info_arm(unsigned long vFunc)
 
     // Get the base clock rate 
     // set up the buffer
-    mailbuffer[0] = 11 * 4;      // size of this message
+    mailbuffer[0] = 12 * 4;      // size of this message
     mailbuffer[1] = 0;          // this is a request
 
     // next comes the first tag
     mailbuffer[2] = vFunc;      // get tag (0x00010005 = arm memory, 0x00010006 = vc memory)
-    mailbuffer[3] = 0x8;        // value buffer size
+
+    switch (vFunc)
+    {
+        case MBOX_GET_BOARD_FIRMWARE:
+        case MBOX_GET_BOARD_MODEL:
+        case MBOX_GET_BOARD_REVISION:
+            mailbuffer[3] = 0x4;
+            break;
+        case MBOX_GET_BOARD_MAC_ADDRESS:
+            mailbuffer[3] = 0x6;
+            break;
+        case MBOX_GET_BOARD_SERIAL:
+            mailbuffer[3] = 0x8;
+            break;
+        case MBOX_GET_ARM_MEMORY:
+        case MBOX_GET_VC_MEMORY:
+            mailbuffer[3] = 0x8;
+            break;
+    }
+
     mailbuffer[4] = 0x0;        // 
     mailbuffer[5] = 0x0;        // start memmory
     mailbuffer[6] = 0x0;        // size memory 
-
-    // closing tag
     mailbuffer[7] = 0x0;
     mailbuffer[8] = 0x0;
     mailbuffer[9] = 0x0;
     mailbuffer[10] = 0x0;
+    mailbuffer[11] = 0x0;
 
     // send the message
     mbox_write(MBOX_PROP, mb_addr);
@@ -54,22 +72,21 @@ mBoxInfoResp get_info_arm(unsigned long vFunc)
 
     switch (vFunc)
     {
+        case MBOX_GET_BOARD_FIRMWARE:
         case MBOX_GET_BOARD_MODEL:
         case MBOX_GET_BOARD_REVISION:
-            memResp.modelrev = mailbuffer[6];
+            memResp.modelrev = mailbuffer[5];
             break;
         case MBOX_GET_BOARD_MAC_ADDRESS:
-            memResp.byte00 = mailbuffer[6] & 0x00FF;
-            memResp.byte01 = ((mailbuffer[6] & 0xFF00) >> 8);
-            memResp.byte02 = mailbuffer[7] & 0x00FF;
-            memResp.byte03 = ((mailbuffer[7] & 0xFF00) >> 8);
-            memResp.byte04 = mailbuffer[8] & 0x00FF;
-            memResp.byte05 = ((mailbuffer[8] & 0xFF00) >> 8);
-            memResp.byte06 = mailbuffer[9] & 0x00FF;
-            memResp.byte07 = ((mailbuffer[9] & 0xFF00) >> 8);
+            memResp.byte00 = mailbuffer[5];
+            memResp.byte01 = mailbuffer[6];
+            memResp.byte02 = mailbuffer[7];
+            memResp.byte03 = mailbuffer[8];
+            memResp.byte04 = mailbuffer[9];
+            memResp.byte05 = mailbuffer[10];
             break;
         case MBOX_GET_BOARD_SERIAL:
-            memResp.serial = mailbuffer[6];
+            memResp.serial = mailbuffer[5];
             break;
         case MBOX_GET_ARM_MEMORY:
         case MBOX_GET_VC_MEMORY:

@@ -36,6 +36,7 @@
 #include "disk/sdhci.h"
 #include "disk/util.h"
 #include "common/mylib.h"
+#include <kernel/timer.h>
 
 #define TIMEOUT_WAIT(stop_if_true, usec) 						\
 do {			                                                \
@@ -374,7 +375,7 @@ static struct sd_scr sdcard_scr  __attribute__((aligned(4)));
 static struct emmc_block_dev block_dev __attribute__((aligned(4)));
 
 #define MIN_FREQ 4000
-#define BCM2835_EMMC_WRITE_DELAY       (((2 * 1000000) / MIN_FREQ) + 1)
+#define BCM2835_EMMC_WRITE_DELAY       (((4 * 1000000) / MIN_FREQ) + 1)
 
 #if defined (EMMC_DEBUG) || defined (SD_DEBUG)
 extern int printf(const char *format, ...);
@@ -583,18 +584,18 @@ static uint32_t emmc_set_clock(const uint32_t target_clock) {
 	uint32_t control1 = BCM2835_EMMC->CONTROL1;
 	control1 &= ~BCM2835_EMMC_CONTROL1_CLK_EN;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	// Write the new divider
 	control1 &= ~0xffe0;		// Clear old setting + clock generator select
 	control1 |= divider;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	// Enable the SD clock
 	control1 |= BCM2835_EMMC_CONTROL1_CLK_EN;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	TIMEOUT_WAIT(BCM2835_EMMC->CONTROL1 & BCM2835_EMMC_CONTROL1_CLK_STABLE, 1000000);
 
@@ -620,7 +621,7 @@ static uint32_t emmc_reset(void) {
 	uint32_t control1 = BCM2835_EMMC->CONTROL1;
 	control1 |= BCM2835_EMMC_CONTROL1_SRST_HC;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	TIMEOUT_WAIT((BCM2835_EMMC->CONTROL1 & BCM2835_EMMC_CONTROL1_SRST_HC) == 0, 1000000);
 
@@ -634,13 +635,14 @@ static uint32_t emmc_reset(void) {
 	control1 |= BCM2835_EMMC_CONTROL1_CLK_INTLEN;
 	control1 |= BCM2835_EMMC_CONTROL1_DATA_TOUNIT_MAX;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	EMMC_TRACE("control0: %08x, control1: %08x, control2: %08x", BCM2835_EMMC->CONTROL0, BCM2835_EMMC->CONTROL1, BCM2835_EMMC->CONTROL2);
 
-	if (emmc_set_clock(SD_CLOCK_LOW) < 0) {
+    emmc_set_clock(SD_CLOCK_LOW);
+/*	if (emmc_set_clock(SD_CLOCK_LOW) < 0) {
 		return -1;
-	}
+	}*/
 
 	// Mask off sending interrupts to the ARM.
 	// Reset interrupts.
@@ -648,7 +650,7 @@ static uint32_t emmc_reset(void) {
 	BCM2835_EMMC->IRPT_EN = 0;
 	BCM2835_EMMC->INTERRUPT = 0xffffffff;
 	BCM2835_EMMC->IRPT_MASK = 0xffffffff & (~SD_CARD_INTERRUPT);
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	return 0;
 }
@@ -663,7 +665,7 @@ static int emmc_reset_cmd(void) {
 	uint32_t control1 = BCM2835_EMMC->CONTROL1;
 	control1 |= BCM2835_EMMC_CONTROL1_RESET_CMD;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	TIMEOUT_WAIT((BCM2835_EMMC->CONTROL1 & BCM2835_EMMC_CONTROL1_RESET_CMD) == 0, 1000000);
 
@@ -673,7 +675,7 @@ static int emmc_reset_cmd(void) {
 	}
 
 	BCM2835_EMMC->INTERRUPT = SD_ERR_MASK_CMD_TIMEOUT;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	return 0;
 }
@@ -688,7 +690,7 @@ static int emmc_reset_dat(void) {
 	uint32_t control1 = BCM2835_EMMC->CONTROL1;
 	control1 |= BCM2835_EMMC_CONTROL1_RESET_DATA;
 	BCM2835_EMMC->CONTROL1 = control1;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
 	TIMEOUT_WAIT((BCM2835_EMMC->CONTROL1 & BCM2835_EMMC_CONTROL1_RESET_DATA) == 0, 1000000);
 
@@ -719,7 +721,6 @@ static uint32_t emmc_switch_voltage(void) {
  */
 static void emmc_issue_command(uint32_t cmd_reg, uint32_t argument, uint32_t timeout) {
 	struct emmc_block_dev *dev = &block_dev;
-    int i;
 
     dev->last_cmd_reg = cmd_reg;
     dev->last_cmd_success = 0;
@@ -758,7 +759,7 @@ static void emmc_issue_command(uint32_t cmd_reg, uint32_t argument, uint32_t tim
 
     // Set command reg
     BCM2835_EMMC->CMDTM = cmd_reg;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 
     EMMC_TRACE("Wait for command complete interrupt...");
     TIMEOUT_WAIT(BCM2835_EMMC->INTERRUPT & 0x8001, timeout);
@@ -956,7 +957,7 @@ static void emmc_handle_interrupts() {
 	BCM2835_EMMC->INTERRUPT = reset_mask;
     BCM2835_EMMC->IRPT_MASK = 0xffffffff;
     BCM2835_EMMC->IRPT_EN = 1;
-    Delayus(BCM2835_EMMC_WRITE_DELAY);
+    timer_wait(BCM2835_EMMC_WRITE_DELAY);
 }
 
 /**
@@ -979,7 +980,7 @@ static void emmc_4bit_mode_change_bit(uint32_t old_irpt_mask) {
 	control0 |= BCM2835_EMMC_CONTROL0_USE_4BITBUS;
 	BCM2835_EMMC->CONTROL0 = control0;
 	BCM2835_EMMC->IRPT_MASK = old_irpt_mask;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 }
 
 /**
@@ -994,7 +995,7 @@ static void emmc_set_block_size(uint32_t block_size) {
 	controller_block_size &= ~BCM2835_EMMC_BLKSIZECNT_BLKSIZE_MASK;
 	controller_block_size |= block_size;
 	BCM2835_EMMC->BLKSIZECNT = controller_block_size;
-	Delayus(BCM2835_EMMC_WRITE_DELAY);
+	timer_wait(BCM2835_EMMC_WRITE_DELAY);
 }
 
 /**
@@ -1019,9 +1020,9 @@ void bcm2835_emmc_init_gpio_cd(void) {
 	BCM2835_GPIO->GPFSEL4 = value;
 	// Enable pull-up
 	BCM2835_GPIO->GPPUD = (uint32_t)BCM2835_GPIO_PUD_UP;
-	Delayus(10);
+	timer_wait(10);
 	BCM2835_GPIO->GPPUDCLK1 = (uint32_t)(1 << (GPIO_CD % 32));
-	Delayus(10);
+	timer_wait(10);
 	BCM2835_GPIO->GPPUD = (uint32_t)BCM2835_GPIO_PUD_OFF;
 	BCM2835_GPIO->GPPUDCLK1 = (uint32_t)(0 << (GPIO_CD % 32));
 }
@@ -1233,10 +1234,10 @@ int sd_card_init(void) {
 
 	base_clock = sd_get_base_clock_hz();
 
-	if (base_clock < 0) {
+/*	if (base_clock < 0) {
 		SD_TRACE("Could not get the base clock");
 		return SD_ERROR;
-	}
+	}*/
 
 	if (emmc_reset() != 0) {
 		SD_TRACE("Controller did not reset properly");
@@ -1349,7 +1350,7 @@ int sd_card_init(void) {
 			card_is_busy = 0;
 		} else {
 			SD_TRACE("Card is busy, retrying");
-			Delayus(500000);
+			timer_wait(500000);
 		}
 	}
 
@@ -1361,7 +1362,7 @@ int sd_card_init(void) {
 
 #ifdef SD_1_8V_SUPPORT
 	// A small wait before the voltage switch
-	Delayus(5000);
+	timer_wait(5000);
 
 	// Switch to 1.8V mode if possible
 	if(ret->card_supports_18v)
@@ -1401,7 +1402,7 @@ int sd_card_init(void) {
 	    BCM2835_EMMC->CONTROL0 = control0;
 
 	    // Wait 5 ms
-	    Delayus(5000);
+	    timer_wait(5000);
 
 	    // Check the 1.8V signal enable is set
 	    control0 = BCM2835_EMMC->CONTROL0;
@@ -1419,7 +1420,7 @@ int sd_card_init(void) {
 	    BCM2835_EMMC->CONTROL1 = control1;
 
 	    // Wait 1 ms
-	    Delayus(10000);
+	    timer_wait(10000);
 
 	    // Check DAT[3:0]
 		status_reg = BCM2835_EMMC->STATUS;
