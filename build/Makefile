@@ -6,6 +6,8 @@ OBJCOPY = arm-none-eabi-objcopy
 CFLAGS= -march=armv6zk -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -fpic -ffreestanding
 CSRCFLAGS= -O2 -Wall -Wextra
 LFLAGS= -ffreestanding -O2 -nostdlib -LD:\Projetos\gcc-arm-none-eabi-7-2018-q2-update\lib\gcc\arm-none-eabi\7.3.1\thumb -lgcc
+#LIBS= ../lib/usb/libuspienv.a ../lib/usb/libuspi.a
+#LIBS= ../lib/usb/libcsud.a
 
 # Location of the files
 KER_SRC = ../src/kernel

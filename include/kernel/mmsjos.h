@@ -121,6 +121,14 @@ void writestringPic(unsigned char *msg);
 } \
 while (0)
 
+#define desativaCursor() do { \
+    paramVDG[0] = 0x02; \
+    paramVDG[1] = 0xD8; \
+    paramVDG[2] = 0; \
+    commVDG(paramVDG); \
+} \
+while (0)
+
 #define blinkCursor() do { \
     paramVDG[0] = 0x01; \
     paramVDG[1] = 0xF0; \

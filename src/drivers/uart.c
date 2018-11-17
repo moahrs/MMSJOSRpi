@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <drivers/bcm2835min.h>
 #include <drivers/uart.h>
 #include <common/stdlib.h>
 
@@ -16,7 +17,7 @@ uint32_t mmio_read(uint32_t reg)
 }
 
 // Loop <delay> times in a way that the compiler won't optimize away
-void delay(int32_t count)
+void delaycyles(int32_t count)
 {
     asm volatile("__delay_%=: subs %[count], %[count], #1; bne __delay_%=\n"
             : "=r"(count): [count]"0"(count) : "cc");
@@ -32,14 +33,18 @@ void uart_init()
     // Setup the GPIO pin 14 && 15.
     // Disable pull up/down for all GPIO pins & delay for 150 cycles.
     mmio_write(GPPUD, 0x00000000);
-    delay(150);
+    delaycyles(650);
 
     // Disable pull up/down for pin 14,15 & delay for 150 cycles.
     mmio_write(GPPUDCLK0, (1 << 14) | (1 << 15));
-    delay(150);
+    delaycyles(650);
 
     // Write 0 to GPPUDCLK0 to make it take effect.
     mmio_write(GPPUDCLK0, 0x00000000);
+    delaycyles(650);
+
+    bcm2835_gpio_fsel(RPI_V2_GPIO_P1_08, BCM2835_GPIO_FSEL_ALT0); 
+    bcm2835_gpio_fsel(RPI_V2_GPIO_P1_10, BCM2835_GPIO_FSEL_ALT0); 
 
     // Clear pending interrupts.
     mmio_write(UART0_ICR, 0x7FF);
@@ -47,12 +52,12 @@ void uart_init()
     // Set integer & fractional part of baud rate.
     // Divider = UART_CLOCK/(16 * Baud)
     // Fraction part register = (Fractional part * 64) + 0.5
-    // UART_CLOCK = 3000000; Baud = 115200.
+    // UART_CLOCK = 4000000; Baud = 115200.
 
-    // Divider = 3000000 / (16 * 115200) = 1.627 = ~1.
-    mmio_write(UART0_IBRD, 1);
-    // Fractional part register = (.627 * 64) + 0.5 = 40.6 = ~40.
-    mmio_write(UART0_FBRD, 40);
+    // Divider = 4000000 / (16 * 115200) = 2.1701 = ~2.
+    mmio_write(UART0_IBRD, 2);
+    // Fractional part register = (.1701 * 64) + 0.5 = 11.38 = ~11.
+    mmio_write(UART0_FBRD, 11);
 
     // Enable FIFO & 8 bit data transmissio (1 stop bit, no parity).
     mmio_write(UART0_LCRH, (1 << 4) | (1 << 5) | (1 << 6));

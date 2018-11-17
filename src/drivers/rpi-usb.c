@@ -1243,8 +1243,10 @@ RESULT HcdProcessRootHubMessage (uint8_t* buffer, uint32_t bufferLength, struct 
  11Feb17 LdB
  --------------------------------------------------------------------------*/
 RESULT PowerOnUsb(void) {
-	uint32_t __attribute__((aligned(16))) mailbox_message[8];
-	mailbox_message[0] = sizeof(mailbox_message);
+	uintptr_t mb_addr = 0x00007000;     // 0x7000 in L2 cache coherent mode
+	uint32_t __attribute__((aligned(16))) *mailbox_message = (uint32_t *)mb_addr;
+//	uint32_t __attribute__((aligned(16))) mailbox_message[8];
+	mailbox_message[0] = 8 * 4 /*sizeof(mailbox_message)*/;
 	mailbox_message[1] = 0;
 	mailbox_message[2] = MAILBOX_TAG_SET_POWER_STATE;
 	mailbox_message[3] = 8;
@@ -1253,12 +1255,16 @@ RESULT PowerOnUsb(void) {
 	mailbox_message[6] = 0x1;	 // 1 = on	
 	mailbox_message[7] = 0x0;
 
-	mailbox_write(MB_CHANNEL_TAGS, ARMaddrToGPUaddr(&mailbox_message[0]));
+	mailbox_write(MB_CHANNEL_TAGS, mb_addr /*ARMaddrToGPUaddr(&mailbox_message[0])*/ );
 	mailbox_read(MB_CHANNEL_TAGS);
 
-	if ((mailbox_message[1] == 0x80000000) && (mailbox_message[4] == 0x80000008)) {
+	if (mailbox_message[1] == 0x80000000 && mailbox_message[5] == 0x3 && (mailbox_message[6] & 0x03) == 0x01)
 		return OK;
-	}
+
+/*	if ((mailbox_message[1] == 0x80000000) && (mailbox_message[4] == 0x80000008)) {
+		return OK;
+	}*/
+
 	return ErrorDevice;												// Failed to turn on
 }
 
@@ -1268,8 +1274,10 @@ RESULT PowerOnUsb(void) {
  11Feb17 LdB
  --------------------------------------------------------------------------*/
 RESULT PowerOffUsb(void) {
-	uint32_t __attribute__((aligned(16))) mailbox_message[8];
-	mailbox_message[0] = sizeof(mailbox_message);
+	uintptr_t mb_addr = 0x00007000;     // 0x7000 in L2 cache coherent mode
+	uint32_t __attribute__((aligned(16))) *mailbox_message = (uint32_t *)mb_addr;
+//	uint32_t __attribute__((aligned(16))) mailbox_message[8];
+	mailbox_message[0] = 8 * 4 /*sizeof(mailbox_message)*/;
 	mailbox_message[1] = 0;
 	mailbox_message[2] = MAILBOX_TAG_SET_POWER_STATE;
 	mailbox_message[3] = 8;
@@ -1278,12 +1286,16 @@ RESULT PowerOffUsb(void) {
 	mailbox_message[6] = 0x0;	 // 1 = off	
 	mailbox_message[7] = 0x0;
 
-	mailbox_write(MB_CHANNEL_TAGS, ARMaddrToGPUaddr(&mailbox_message[0]));
+	mailbox_write(MB_CHANNEL_TAGS, mb_addr /*ARMaddrToGPUaddr(&mailbox_message[0])*/ );
 	mailbox_read(MB_CHANNEL_TAGS);
 
-	if ((mailbox_message[1] == 0x80000000) && (mailbox_message[4] == 0x80000008)) {
+	if (mailbox_message[1] == 0x80000000 && mailbox_message[5] == 0x3 && (mailbox_message[6] & 0x03) == 0x00)
 		return OK;
-	}
+
+/*	if ((mailbox_message[1] == 0x80000000) && (mailbox_message[4] == 0x80000008)) {
+		return OK;
+	}*/
+
 	return ErrorDevice;												// Failed to turn on
 }
 
@@ -1297,7 +1309,7 @@ RESULT HCDReset(void) {
 	original_tick = timer_getTickCount64();							// Hold original tickcount
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
-			LOG("Aqui 0");
+			LOG("Aq0.");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->AhbMasterIdle == false);				// Keep looping until idle or timeout
@@ -1308,7 +1320,7 @@ RESULT HCDReset(void) {
 	original_tick = timer_getTickCount64();							// Hold original tickcount
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
-			LOG("Aqui 1");
+			LOG("Aq1.");
 			return ErrorTimeout;									// Return timeout error
 		}
 		temp = *DWC_CORE_RESET;										// Read reset register
@@ -1330,7 +1342,7 @@ RESULT HCDTransmitFifoFlush(enum CoreFifoFlush fifo) {
 	original_tick = timer_getTickCount64();							// Hold original tick count
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
-			LOG("Aqui 2");
+			LOG("Aq2.");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->TransmitFifoFlush == true);			// Loop until flush signal low or timeout
@@ -1350,7 +1362,7 @@ RESULT HCDReceiveFifoFlush(void) {
 	original_tick = timer_getTickCount64();							// Hold original tick count
 	do {
 		if (tick_difference(original_tick, timer_getTickCount64())> 100000) {
-			LOG("Aqui 3");
+			LOG("Aq3.");
 			return ErrorTimeout;									// Return timeout error
 		}
 	} while (DWC_CORE_RESET->ReceiveFifoFlush == true);				// Loop until flush signal low or timeout
@@ -1568,6 +1580,7 @@ RESULT HCDCheckErrorAndAction(struct ChannelInterrupts interrupts, bool packetSp
 		sendCtrl->SplitTries++;										// Increment split tries as we have a split packet
 		if (sendCtrl->SplitTries == 5) {							// Ridiculous number of split resends reached .. fatal error
 			sendCtrl->ActionFatalError = true;						// This is a fatal error something is very wrong
+			printf("Aq8.");
 			return ErrorTransmission;								// Transmission error
 		}
 		sendCtrl->ActionResendSplit = true;							// Action is to try sending split again
@@ -1592,7 +1605,7 @@ RESULT HCDCheckErrorAndAction(struct ChannelInterrupts interrupts, bool packetSp
 		{
 			return ErrorTransmission;								// Endpoint device not yet ... resend
 		}
-		LOG("Aqui 4");
+		LOG("Aq4.");	// My message
 		return ErrorTimeout;										// Let guess program just timed out
 	}
 	/* Everything else updates global count as it is serious */
@@ -1631,7 +1644,7 @@ RESULT HCDWaitOnTransmissionResult(uint32_t timeout, uint8_t channel, struct Cha
 		timer_wait(100);
 		if (tick_difference(original_tick, timer_getTickCount64()) > timeout) {
 			if (IntFlags) *IntFlags = tempInt;						// Return interrupt flags if requested					
-			LOG("Aqui 5");
+			LOG("Aq5.");
 			return ErrorTimeout;									// Return timeout error
 		}
 		tempInt = DWC_HOST_CHANNEL[channel].Interrupt;				// Read and hold interterrupt
@@ -1719,15 +1732,15 @@ RESULT HCDChannelTransfer(const struct UsbPipe pipe, const struct UsbPipeControl
 
 			// The buffer isnt align 4 so use the aligned buffer for this channel transfer
 			// C gets a little bit quirky because I have deferenced using the array of the structure .. help C out
-			*(uint32_t*)&DWC_HOST_CHANNEL[pipectrl.Channel].DmaAddr = ARMaddrToGPUaddr(&aligned_bufs[pipectrl.Channel]);
+			*(uint32_t*)&DWC_HOST_CHANNEL[pipectrl.Channel].DmaAddr = (uint32_t)&aligned_bufs[pipectrl.Channel]; /*ARMaddrToGPUaddr(&aligned_bufs[pipectrl.Channel]);*/
 		}
 		else {
 			// The buffer is 4 byte aligned so we can just use it 
 			// C gets a little bit quirky because I have deferenced using the array of the structure .. help C out 
-			*(uint32_t*)&DWC_HOST_CHANNEL[pipectrl.Channel].DmaAddr = ARMaddrToGPUaddr(&buffer[offset]);
+			*(uint32_t*)&DWC_HOST_CHANNEL[pipectrl.Channel].DmaAddr = (uint32_t)&buffer[offset]; /*ARMaddrToGPUaddr(&buffer[offset]);*/
 		}
 		
-		/* Launch transmission */
+		// Launch transmission 
 		tempChar = DWC_HOST_CHANNEL[pipectrl.Channel].Characteristic;// Read host channel characteristic
 		tempChar.packets_per_frame = 1;								// Set 1 frame per packet
 		tempChar.channel_enable = true;								// Set enable channel
@@ -1739,28 +1752,29 @@ RESULT HCDChannelTransfer(const struct UsbPipe pipe, const struct UsbPipeControl
 			LOG("HCD: Request on channel %i has timed out.\n", pipectrl.Channel);// Log the error
 			return ErrorTimeout;									// Return timeout error
 		}
+/*		else
+			LOG("Aq6.tempInt: 0x%08x\n",(unsigned int)tempInt.Raw32);*/
 
 		tempSplit = DWC_HOST_CHANNEL[pipectrl.Channel].SplitCtrl;	// Fetch the split details
-		result = HCDCheckErrorAndAction(tempInt,
-			tempSplit.split_enable, &sendCtrl);						// Check transmisson RESULT and set action flags
+		result = HCDCheckErrorAndAction(tempInt, tempSplit.split_enable, &sendCtrl);						// Check transmisson RESULT and set action flags
 		if (result) LOG("Result: %i Action: 0x%08x tempInt: 0x%08x tempSplit: 0x%08x Bytes sent: %i\n",
-			result, (unsigned int)sendCtrl.Raw32, (unsigned int)tempInt.Raw32, 
-			(unsigned int)tempSplit.Raw32, result ? 0 : DWC_HOST_CHANNEL[pipectrl.Channel].TransferSize.size);
+			result, (unsigned int)sendCtrl.Raw32, (unsigned int)tempInt.Raw32, (unsigned int)tempSplit.Raw32, DWC_HOST_CHANNEL[pipectrl.Channel].TransferSize.size);
 		if (sendCtrl.ActionFatalError) return result;				// Fatal error occured we need to bail
 
 		sendCtrl.SplitTries = 0;									// Zero split tries count
 		while (sendCtrl.ActionResendSplit) {						// Decision was made to resend split
-			/* Clear channel interrupts */
+			// Clear channel interrupts 
 			DWC_HOST_CHANNEL[pipectrl.Channel].Interrupt.Raw32 = 0xFFFFFFFF;
 			DWC_HOST_CHANNEL[pipectrl.Channel].InterruptMask.Raw32 = 0x0;
 
-			/* Set we are completing the split */
+			// Set we are completing the split
 			tempSplit = DWC_HOST_CHANNEL[pipectrl.Channel].SplitCtrl;
 			tempSplit.complete_split = true;						// Set complete split flag
 			DWC_HOST_CHANNEL[pipectrl.Channel].SplitCtrl = tempSplit;
 
-			/* Launch transmission */
+			// Launch transmission 
 			tempChar = DWC_HOST_CHANNEL[pipectrl.Channel].Characteristic;
+			tempChar.packets_per_frame = 1;								// Set 1 frame per packet
 			tempChar.channel_enable = true;
 			tempChar.channel_disable = false;
 			DWC_HOST_CHANNEL[pipectrl.Channel].Characteristic = tempChar;
@@ -1770,12 +1784,13 @@ RESULT HCDChannelTransfer(const struct UsbPipe pipe, const struct UsbPipeControl
 				LOG("HCD: Request split completion on channel:%i has timed out.\n", pipectrl.Channel);// Log error
 				return ErrorTimeout;								// Return timeout error
 			}
+/*			else
+				LOG("Aq7.tempInt: 0x%08x\n",(unsigned int)tempInt.Raw32);*/
 
 			tempSplit = DWC_HOST_CHANNEL[pipectrl.Channel].SplitCtrl;// Fetch the split details again
-			result = HCDCheckErrorAndAction(tempInt,
-				tempSplit.split_enable, &sendCtrl);					// Check RESULT of split resend and set action flags
-			//if (result) LOG("Result: %i Action: 0x%08lx tempInt: 0x%08lx tempSplit: 0x%08lx Bytes sent: %i\n",
-			//	result, sendCtrl.RawUsbSendContol, tempInt.RawInterrupt, tempSplit.RawSplitControl, RESULT ? 0 : DWC_HOST_CHANNEL[pipectrl.Channel].TransferSize.TransferSize);
+			result = HCDCheckErrorAndAction(tempInt, tempSplit.split_enable, &sendCtrl);					// Check RESULT of split resend and set action flags
+			if (result) LOG("Result: %i Action: 0x%08x tempInt: 0x%08x tempSplit: 0x%08x Bytes sent: %i\n",
+				result, (unsigned int)sendCtrl.Raw32, (unsigned int)tempInt.Raw32, (unsigned int)tempSplit.Raw32, result ? 0 : DWC_HOST_CHANNEL[pipectrl.Channel].TransferSize.size);
 			if (sendCtrl.ActionFatalError) return result;			// Fatal error occured bail
 			if (sendCtrl.LongerDelay) timer_wait(10000);			// Not yet response slower delay
 				else timer_wait(2500);								// Small delay between split resends
@@ -2131,19 +2146,33 @@ RESULT HCDReadStringDescriptor (struct UsbPipe pipe,				// Control pipe to the U
 RESULT HCDInitialise(void) {
 	uint32_t VendorId = *DWC_CORE_VENDORID;							// Read the vendor ID
 	uint32_t UserId = *DWC_CORE_USERID;								// Read the user ID
-	if ((VendorId & 0xfffff000) != 0x4f542000) {					// 'OT'2 
-		LOG("HCD: Hardware: %c%c%x.%x%x%x (BCM%.5x). Driver incompatible. Expected OT2.xxx (BCM2708x).\n",
+	if ((VendorId & 0xfffff000) != 0x4f542000) 						// 'OT'2
+	{					 
+		LOG("HCD: Hardware: ");
+		writechar((char)((VendorId >> 24)));
+		writechar((char)((VendorId >> 16) & 0xff));
+		LOG("%x.%x%x%x (BCM%05x). Driver incompatible. Expected OT2.xxx (BCM2708x).\n",
 			(char)((VendorId >> 24) & 0xff), (char)((VendorId >> 16) & 0xff),
 			(unsigned int)((VendorId >> 12) & 0xf), (unsigned int)((VendorId >> 8) & 0xf),
 			(unsigned int)((VendorId >> 4) & 0xf), (unsigned int)((VendorId >> 0) & 0xf),
 			(unsigned int)((UserId >> 12) & 0xFFFFF));
 		return ErrorIncompatible;
-	} else {
-		LOG("HCD: Hardware: %c%c%x.%x%x%x (BCM%.5x).\n",
-			(char)((VendorId >> 24) & 0xff),(char)((VendorId >> 16) & 0xff),
+	} 
+	else 
+	{
+		LOG("HCD: Hardware: ");
+		writechar((char)((VendorId >> 24)));
+		writechar((char)((VendorId >> 16) & 0xff));
+		LOG("%x.%x%x%x (BCM%05x).\n",
 			(unsigned int)((VendorId >> 12) & 0xf), (unsigned int)((VendorId >> 8) & 0xf),
 			(unsigned int)((VendorId >> 4) & 0xf), (unsigned int)((VendorId >> 0) & 0xf),
 			(unsigned int)((UserId >> 12) & 0xFFFFF));
+			
+/*		LOG("HCD: Hardware: %c%c%x.%x%x%x (BCM%05x).\n",
+			(char)((VendorId >> 24) & 0xff),(char)((VendorId >> 16) & 0xff),
+			(unsigned int)((VendorId >> 12) & 0xf), (unsigned int)((VendorId >> 8) & 0xf),
+			(unsigned int)((VendorId >> 4) & 0xf), (unsigned int)((VendorId >> 0) & 0xf),
+			(unsigned int)((UserId >> 12) & 0xFFFFF));*/
 	}
 
 	if (DWC_CORE_HARDWARE->Architecture != InternalDma) {			// We only allow DMA transfer
@@ -2406,6 +2435,7 @@ RESULT HubPortConnectionChanged(struct UsbDevice *device, uint8_t port) {
 		data->Children[port]->Pipe0.lowSpeedNodePort = port;
 	}
 	else data->Children[port]->Pipe0.Speed = USB_SPEED_FULL;
+	
 	data->Children[port]->ParentHub.Number = device->Pipe0.Number;
 	data->Children[port]->ParentHub.PortNumber = port;
 	if ((result = EnumerateDevice(data->Children[port], device, port)) != OK) {
@@ -2837,16 +2867,24 @@ RESULT EnumerateDevice(struct UsbDevice *device, struct UsbDevice* ParentHub, ui
 RESULT UsbAttachRootHub(void) {
 	RESULT result;
 	struct UsbDevice *rootHub = NULL;
+
 	LOG_DEBUG("Allocating RootHub\n");
+
 	if (DeviceTable[0].PayLoadId != 0)								// If RootHub is already in use
 		UsbDeallocateDevice(&DeviceTable[0]);						// We will need to deallocate it and every child
 	result = UsbAllocateDevice(&rootHub);							// Try allocating the root hub now
-	if (rootHub != &DeviceTable[0]) result = ErrorCompiler;			// Somethign really wrong .. 1st allocation should always be DeviceList[0]
-	if (result != OK) return result;								// Return error result somethging fatal happened
+
+	if (rootHub != &DeviceTable[0]) 								// Somethign really wrong .. 1st allocation should always be DeviceList[0]
+		result = ErrorCompiler;			
+	
+	if (result != OK) 												// Return error result somethging fatal happened
+		return result;								
+	
 	DeviceTable[0].Pipe0.Speed = USB_SPEED_FULL;					// Set our fake hub to full speed .. as it's fake we cant really ask it speed can we :-)
 	DeviceTable[0].Pipe0.MaxSize = Bits64;							// Set our fake hub to 64 byte packets .. as it's fake we need to do it manually
 	DeviceTable[0].Config.Status = USB_STATUS_POWERED;				// Set our fake hub status to configured .. as it's fake we need to do manually
 	RootHubDeviceNumber = 0;										// Roothub number is zero
+	
 	return EnumerateDevice(&DeviceTable[0], NULL, 0);				// Ok start enumerating the USB bus as roothub port 1 is the physical bus
 }
 
@@ -3203,29 +3241,42 @@ const char* SpeedString[3] = { "High", "Full", "Low" };
 
 void UsbShowTree(struct UsbDevice *root, const int level, const char tee) {
 	int maxPacket;
+
 	for (int i = 0; i < level - 1; i++)
-		if (TreeLevelInUse[i] == 0) printf("   ");
-			else printf(" %c ", '\xB3');							// Draw level lines if in use	
-			maxPacket = SizeToNumber(root->Pipe0.MaxSize);			// Max packet size
-	printf(" %c-%s id: %i port: %i speed: %s packetsize: %i %s\n", tee,
-		UsbGetDescription(root), root->Pipe0.Number, root->ParentHub.PortNumber,
-		SpeedString[root->Pipe0.Speed], maxPacket,
-		(IsHid(root->Pipe0.Number)) ? "- HID interface" : "");		// Print this entry
+		if (TreeLevelInUse[i] == 0) 
+			printf("   ");
+		else 
+			printf(" %s ", "*");							// Draw level lines if in use	
+
+	maxPacket = SizeToNumber(root->Pipe0.MaxSize);			// Max packet size
+
+	writechar(tee);
+	printf("-%s id: %x port: %i speed: %s packetsize: %i %s\n",
+				UsbGetDescription(root), root->Pipe0.Number, root->ParentHub.PortNumber,
+				SpeedString[root->Pipe0.Speed], maxPacket, (IsHid(root->Pipe0.Number)) ? "- HID interface" : "  ");		// Print this entry
+
 	if (IsHub(root->Pipe0.Number)) {
 		int lastChild = root->HubPayload->MaxChildren;
-		for (int i = 0; i < lastChild; i++) {						// For each child of hub
-			char nodetee = '\xC0';									// Preset nodetee to end node ... "L"
-			for (int j = i; j < lastChild - 1; j++) {				// Check if any following child node is valid
-				if (root->HubPayload->Children[j + 1]) {			// We found a following node in use					
-					TreeLevelInUse[level] = 1;						// Set tree level in use flag
-					nodetee = (char)0xc3;							// Change the node character to tee looks like this "├"
+		
+		for (int i = 0; i < lastChild; i++) 					// For each child of hub
+		{						
+			char nodetee = '+';									// Preset nodetee to end node ... "L"
+			for (int j = i; j < lastChild - 1; j++) 			// Check if any following child node is valid
+			{				
+				if (root->HubPayload->Children[j + 1]) 			// We found a following node in use					
+				{				
+					TreeLevelInUse[level] = 1;					// Set tree level in use flag
+					nodetee = '|';								// Change the node character to tee looks like this "├"
 					break;											// Exit loop j
 				};
 			}
-			if (root->HubPayload->Children[i]) {					// If child valid
+
+			if (root->HubPayload->Children[i]) 					// If child valid
+			{		
 				UsbShowTree(root->HubPayload->Children[i],
 					level + 1, nodetee);							// Iterate into child but level+1 down of coarse
 			}
+
 			TreeLevelInUse[level] = 0;								// Clear level in use flag
 		}
 	}

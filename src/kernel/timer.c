@@ -6,16 +6,10 @@
 #include "kernel/timer.h"
 #include "drivers/rpi-usb-api.h"     
 
-//#define __USE_USB__
-
 static timer_registers_t * timer_regs;
 
 static void timer_irq_handler(void) 
 {
-	#ifdef __USE_USB__
-	    UsbCheckForChange();
-	#endif
-	    
     timer_set(1000); // 1mS
 }
 

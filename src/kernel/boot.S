@@ -89,6 +89,19 @@ halt:
 dummy:
     bx lr
 
+.section .text.ARMaddrToGPUaddr, "ax", %progbits
+.balign 4
+.globl ARMaddrToGPUaddr;        
+.type ARMaddrToGPUaddr, %function
+ARMaddrToGPUaddr:
+    ldr r1, =RPi_ARM_TO_GPU_Alias                       ;@ Fetch address of bus alias value
+    ldr r1,[r1]                                         ;@ Fetch bus alias  
+    orr r0, r0, r1                                      ;@ Create bus address
+    bx   lr                                             ;@ Return
+.balign 4
+.ltorg                                                  ;@ Tell assembler ltorg data for this code can go here
+.size   ARMaddrToGPUaddr, .-ARMaddrToGPUaddr
+
 .globl RPI_ARM_CPU_ID;                                ;@ Make sure RPI_ARM_CPU_ID label is global
 RPI_ARM_CPU_ID : .4byte 0;                            ;@ Arm Cpu ID is 4 byte variable in 32bit mode
     

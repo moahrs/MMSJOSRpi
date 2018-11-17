@@ -7,8 +7,8 @@ volatile unsigned int y_max = 319;
 #define TFT_DC RPI_V2_GPIO_P1_15	
 #define TFT_RST RPI_V2_GPIO_P1_16
 #define TFT_CS RPI_V2_GPIO_P1_12	
-#define TFT_WR RPI_V2_GPIO_P1_10
-#define TFT_RD RPI_V2_GPIO_P1_08	
+#define TFT_WR RPI_V2_GPIO_P1_13
+#define TFT_RD RPI_V2_GPIO_P1_11	
 #define TFT_D0 RPI_V2_GPIO_P1_29	
 #define TFT_D1 RPI_V2_GPIO_P1_31	
 #define TFT_D2 RPI_V2_GPIO_P1_33	

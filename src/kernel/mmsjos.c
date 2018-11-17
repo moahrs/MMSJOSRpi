@@ -64,9 +64,9 @@
 
 #define __USE_TFT_SCROLL__
 #define __USE_TFT_VDG__
-//#define __USE_UART_MON__
+#define __USE_UART_MON__
 #define __USE_FAT32_SDDISK__
-//#define __USE_USB__
+#define __USE_USB__
 
 #include <stddef.h>
 #include <stdint.h>
@@ -173,6 +173,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
     #ifdef __USE_UART_MON__
         uart_init();
+        puts("UART Initialized...\r");
     #endif
 
     unsigned int vbytepic = 0, vbytevdg;
@@ -271,12 +272,11 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
         printf("Done.\n");
 
     #ifdef __USE_USB__
-        /* Initialize USB system we will want keyboard and mouse */
+        /* Initialize USB system */
         UsbInitialise();
 
         /* Display the USB tree */
-        UsbShowTree(UsbGetRootHub(), 1, '+');
-        printf("\n");
+        UsbShowTree(UsbGetRootHub(), 1, '*');
     #endif
 
     TIMER_EN_INT();
@@ -336,8 +336,6 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
         #endif
 
         #ifdef __USE_TFT_VDG__
-            blinkCursor();
-
             // Verificar Teclado Touch
             getKey();
 
@@ -363,6 +361,7 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
                     switch (vbytepic) {
                         case 0x0D:  // Enter
                             vlin = vlin + 1;
+                            desativaCursor();
                             funcKey(0,2, 0, 0, 50, 0);
                             locate(0, vlin, NOREPOS_CURSOR);
                             *vbufptr = 0x00;
@@ -980,6 +979,8 @@ void putPrompt(unsigned int plinadd) {
     printf("#%s>",(char*)vdiratu);
 
     vinip = vcol;
+
+    ativaCursor();
 }
 
 //-----------------------------------------------------------------------------
@@ -1024,6 +1025,10 @@ void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
     unsigned char ix = 10, iy, ichange = 0;
     unsigned char *ss = (unsigned char*)msgs;
     unsigned int xcolor = pcolor, xbcolor = pbcolor;
+
+    #ifdef __USE_UART_MON__
+        unsigned char *strPut = (unsigned char*)msgs;
+    #endif
 
     #ifdef __USE_TFT_VDG__
         verifyMGI();
@@ -1108,7 +1113,7 @@ void writes(char *msgs, unsigned int pcolor, unsigned int pbcolor) {
     #endif
 
     #ifdef __USE_UART_MON__
-        puts(msgs);
+        puts(strPut);
     #endif
 }
 
@@ -1167,7 +1172,7 @@ void writec(unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor, unsi
     #endif
 
     #ifdef __USE_UART_MON__
-        putc((char*) pbyte);
+        putc((char)pbyte);
     #endif
 }
 
