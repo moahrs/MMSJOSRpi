@@ -64,7 +64,7 @@
 
 #define __USE_TFT_SCROLL__
 #define __USE_TFT_VDG__
-#define __USE_UART_MON__
+//#define __USE_UART_MON__
 #define __USE_FAT32_SDDISK__
 #define __USE_USB__
 
@@ -88,6 +88,7 @@
 #include "common/mylib.h"
 #include "drivers/rpi-usb-api.h"            // This units header
 #include <kernel/timer.h>
+#include <drivers/ds1307.h>
 
 unsigned char* pVersionSO = (unsigned char*)"0.1";
 
@@ -171,9 +172,10 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
         Touch_Init();
     #endif
 
+    uart_init();
+
     #ifdef __USE_UART_MON__
-        uart_init();
-        puts("UART Initialized...\r");
+        puts("UART Initialized...\n");
     #endif
 
     unsigned int vbytepic = 0, vbytevdg;
@@ -260,6 +262,8 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
     #ifdef __USE_USB__
         USB_EN_INT();
     #endif
+
+    ds1307_init(); 
 
     if (vbytepic != RETURN_OK) 
     {
@@ -397,10 +401,12 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
 
         #ifdef __USE_UART_MON__
             putPrompt(noaddline);
+            vbufptr = vbuf;
+            *vbufptr = 0x00;
 
-            gets(vbuf,256);
-            puts(vbuf);
-            putc('\n');
+            gets(vbufptr,256);
+            printf(vbufptr);
+            printf("\n");
 
             processCmd();
         #endif
@@ -462,8 +468,9 @@ void processCmd(void) {
     unsigned char *vdirptr = (unsigned char*)&vdir;
     unsigned char cuntam, vparam[32], vparam2[16], vpicret;
     char *sqtdtam;
-    unsigned long vretfat;
+    unsigned long vretfat, pRetWriteData;
     long vqtdtam;
+    time_t pData;
 
     // Separar linha entre comando e argumento
     linhacomando[0] = '\0';
@@ -798,13 +805,82 @@ void processCmd(void) {
             else if (!strcmp(linhacomando,"RD") && iy == 2) {
                 vretfat = fsRemoveDir(linhaarg);
             }
-            else if (!strcmp(linhacomando,"DATE") && iy == 4) {
-                vpicret = 1;
-                /* ver como pegar */
-            }
-            else if (!strcmp(linhacomando,"TIME") && iy == 4) {
-                vpicret = 1;
-                /* ver como pegar */
+            else if (!strcmp(linhacomando,"TIMER") && iy == 5) 
+            {
+                unsigned char strDay[3], strMon[3], strYear[3];
+                unsigned char strHrs[3], strMin[3], strSec[3], strPtr[3];
+
+                pData = ds1307_read();
+
+                if (vparam[0] || vparam2[0])
+                {
+                    if (vparam[0])
+                    {
+                        strPtr[0] = vparam[0];
+                        strPtr[1] = vparam[1];
+                        strPtr[2] = 0;
+                        pData.Day = atoi(strPtr);
+                        strPtr[0] = vparam[3];
+                        strPtr[1] = vparam[4];
+                        strPtr[2] = 0;
+                        pData.Month = atoi(strPtr);
+                        strPtr[0] = vparam[8];
+                        strPtr[1] = vparam[9];
+                        strPtr[2] = 0;
+                        pData.Year = atoi(strPtr);
+                    }
+
+                    if (vparam2[0])
+                    {
+                        strPtr[0] = vparam2[0];
+                        strPtr[1] = vparam2[1];
+                        strPtr[2] = 0;
+                        pData.Hour = atoi(strPtr);
+                        strPtr[0] = vparam2[3];
+                        strPtr[1] = vparam2[4];
+                        strPtr[2] = 0;
+                        pData.Minute = atoi(strPtr);
+                        strPtr[0] = vparam2[6];
+                        strPtr[1] = vparam2[7];
+                        strPtr[2] = 0;
+                        pData.Second = atoi(strPtr);
+                    }
+
+                    pRetWriteData = ds1307_write(pData);
+
+                    if (pRetWriteData) 
+                        printf("  Write RTC Error (%d)\n",pData.Error);
+
+                    pData = ds1307_read();
+                }
+
+                if (!pData.Error) 
+                {
+                    strDay[0] = BCD2UpperCh(pData.Day);
+                    strDay[1] = BCD2LowerCh(pData.Day);
+                    strDay[2] = 0;
+                    strMon[0] = BCD2UpperCh(pData.Month);
+                    strMon[1] = BCD2LowerCh(pData.Month);
+                    strMon[2] = 0;
+                    strYear[0] = BCD2UpperCh(pData.Year);
+                    strYear[1] = BCD2LowerCh(pData.Year);
+                    strYear[2] = 0;
+
+                    strHrs[0] = BCD2UpperCh(pData.Hour);
+                    strHrs[1] = BCD2LowerCh(pData.Hour);
+                    strHrs[2] = 0;
+                    strMin[0] = BCD2UpperCh(pData.Minute);
+                    strMin[1] = BCD2LowerCh(pData.Minute);
+                    strMin[2] = 0;
+                    strSec[0] = BCD2UpperCh(pData.Second);
+                    strSec[1] = BCD2LowerCh(pData.Second);
+                    strSec[2] = 0;
+
+                    printf("  Date is (dd/mm/yyyy) %s/%s/20%s\n", strDay, strMon, strYear);
+                    printf("  Time is (hh:mm:ss) %s:%s:%s\n", strHrs, strMin, strSec);
+                }
+                else
+                    printf("  Read RTC Error (%d)\n",pData.Error);
             }
             else if (!strcmp(linhacomando,"IFCONFIG") && iy == 8) {
                 vpicret = 1;
@@ -815,6 +891,15 @@ void processCmd(void) {
             }*/
             else if (!strcmp(linhacomando,"LOADCFG") && iy == 7) {
                 loadCFG(1);
+                ix = 255;
+            }
+            else if (!strcmp(linhacomando,"LOAD232") && iy == 7) {
+                load232();
+                // A definir
+                ix = 255;
+            }
+            else if (!strcmp(linhacomando,"SEND232") && iy == 7) {
+                // A definir
                 ix = 255;
             }
             else if (!strcmp(linhacomando,"MODE") && iy == 4) {
@@ -896,26 +981,8 @@ void processCmd(void) {
                                 *vdiratup++ = '/';
                             for (varg = 0; varg < ix; varg++)
                                 *vdiratup++ = linhaarg[varg];
-                            *vdiratup = '\0';
+                            *vdiratup = '\0';   
                         }
-                    }
-                    else if (!strcmp(linhacomando,"DATE")) {
-                        for(ix = 0; ix <= 9; ix++) {
-                            /* ver como fazer */
-                            vlinha[ix] = vbytepic;
-                        }
-
-                        vlinha[ix] = '\0';
-                        printf("  Date is %s\n", vlinha);
-                    }
-                    else if (!strcmp(linhacomando,"TIME")) {
-                        for(ix = 0; ix <= 7; ix++) {
-                            /* ver como fazer */
-                            vlinha[ix] = vbytepic;
-                        }
-
-                        vlinha[ix] = '\0';
-                        printf("  Time is %n\n", vlinha);
                     }
                     else if (!strcmp(linhacomando,"IFCONFIG")) {
                         for(iy = 1; iy <= 5; iy++) {
@@ -1353,6 +1420,125 @@ unsigned char loadCFG(unsigned char ptipo) {
 }
 
 //-----------------------------------------------------------------------------
+void load232(void)
+{
+    unsigned char pByteComm = 0x00, pByteRec, lResult, vOldLin;
+    unsigned int pCount;
+    unsigned char pFileName[15];
+    unsigned char *pMemLoad = (unsigned char*)vMemSystemArea;
+
+    printf("Establishing Communication...\n");
+
+    flush_uart();
+
+    while (pByteComm != 0xDD)
+        pByteComm = getc();
+
+    pByteComm = getc();
+
+    if (pByteComm == 0xDD)
+    {
+        printf("Communication Established...\n");
+
+        putc(0xDD);
+        putc(0xDD);
+
+        printf("Receiving File Name...\n");
+        pCount = 0;
+        lResult = 1;
+
+        while(1)
+        {
+            pByteComm = 0x00;
+
+            while (pByteComm != 0xDD)
+                pByteComm = getc();
+
+            pByteComm = getc();
+            pByteRec = pByteComm;
+
+            putc(0xDD);
+            putc(pByteComm);
+
+            pByteComm = 0x00;
+            
+            while (pByteComm != 0xEE)
+                pByteComm = getc();
+
+            pByteComm = getc();
+
+            if (!pByteComm)
+            {
+                pFileName[pCount] = pByteRec;
+                pCount++;
+            }
+
+            if (pCount == 15)
+                break;
+        }
+
+        if (lResult)
+        {
+            printf("Receiving File %s\n",pFileName);
+
+            vOldLin = vlin;
+            pCount = 0;
+
+            while(1)
+            {
+                if (pCount % 100 == 0) 
+                {
+                    locate(0, vOldLin, NOREPOS_CURSOR);
+                    printf("Receiving Data... %d Byte(s) Received",pCount);
+                }
+
+                pByteComm = 0x00;
+
+                while (pByteComm != 0xDD && pByteComm != 0xEE)
+                    pByteComm = getc();
+
+                if (pByteComm == 0xDD)
+                {
+                    pByteComm = getc();
+                    pByteRec = pByteComm;
+
+                    putc(0xDD);
+                    putc(pByteRec);
+
+                    pByteComm = 0x00;
+                    
+                    while (pByteComm != 0xEE)
+                        pByteComm = getc();
+
+                    pByteComm = getc();
+
+                    if (!pByteComm)
+                    {
+                        *pMemLoad++ = pByteRec;
+                        pCount++;
+                    }
+                }
+                else if (pByteComm == 0xEE)
+                {
+                    pByteComm = getc();
+
+                    if (pByteComm == 0xDD)
+                    {
+                        // Salvar Arquivo
+                        locate(0, vOldLin, NOREPOS_CURSOR);
+                        printf("Receiving Data... %d Byte(s) Received",pCount);
+                        printf("\nFile Saved...\n");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    else 
+        printf("Wrong 2nd.Start (0x%02X) Received.\n", pByteComm);
+}
+
+//-----------------------------------------------------------------------------
 void catFile(unsigned char *parquivo) {
     unsigned char *mcfgfileptr = (unsigned char*)mcfgfile, vqtd = 1;
     unsigned char *parqptr = (unsigned char*)parquivo;
@@ -1361,7 +1547,7 @@ void catFile(unsigned char *parquivo) {
     while (*parqptr++)
         vqtd++;
 
-    vsizefile = loadFile(parquivo, (unsigned char*)&mcfgfile);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+    vsizefile = loadFile(parquivo, mcfgfileptr);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
 
     if (!verro) {
         while (vsizefile > 0) {

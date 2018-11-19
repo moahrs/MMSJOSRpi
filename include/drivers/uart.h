@@ -40,10 +40,6 @@ typedef union uart_control {
     uint32_t as_int;
 } uart_control_t;
 
-void mmio_write(uint32_t reg, uint32_t data);
-
-uint32_t mmio_read(uint32_t reg);
-
 // Loop <delay> times in a way that the compiler won't optimize away
 void delaycyles(int32_t count);
 
@@ -89,19 +85,12 @@ void uart_init();
 uart_flags_t read_flags(void);
 
 void uart_putc(unsigned char c);
-
 unsigned char uart_getc();
 
-void uart_puts(const char* str);
-
-char getc(void);
-
-void putc(char c);
-
-void puts(const char * s);
-
-// This version of gets copies until newline, replacing newline with null char, or until buflen.
-// whichever comes first
-void gets(char * buf, int buflen);
+extern void flush_uart(void);
+extern char getc(void);
+extern void putc(char c);
+extern void puts(const char * s);
+extern void gets(char * buf, int buflen);
 
 #endif

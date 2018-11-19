@@ -271,3 +271,4 @@ extern unsigned char fsUpdateDir(void);
 extern unsigned long fsFindNextCluster(unsigned long vclusteratual, unsigned char vtype);
 extern unsigned long fsFindClusterFree(unsigned char vtype);
 extern void runCmd(void);
+extern void load232(void);
