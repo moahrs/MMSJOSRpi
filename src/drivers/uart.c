@@ -4,6 +4,8 @@
 #include <drivers/uart.h>
 #include <common/stdlib.h>
 
+#define __USE_BLUETOOTH__
+
 // Loop <delay> times in a way that the compiler won't optimize away
 void delaycyles(int32_t count)
 {
@@ -32,8 +34,17 @@ void uart_init()
     bcm2835_peri_write((uint32_t*)BCM2835_GPPUDCLK0, 0x00000000);
     delaycyles(150);*/
 
-    bcm2835_gpio_fsel(RPI_V2_GPIO_P1_08, BCM2835_GPIO_FSEL_ALT0); 
-    bcm2835_gpio_fsel(RPI_V2_GPIO_P1_10, BCM2835_GPIO_FSEL_ALT0); 
+    #ifdef __USE_BLUETOOTH__
+        /* Bluetooth */
+        bcm2835_gpio_fsel(RPI_V2_GPIO_P1_08, BCM2835_GPIO_FSEL_INPT);   // GPIO14
+        bcm2835_gpio_fsel(RPI_V2_GPIO_P1_10, BCM2835_GPIO_FSEL_INPT);   // GPIO15
+        bcm2835_gpio_fsel(32, BCM2835_GPIO_FSEL_ALT3);                  // GPIO32
+        bcm2835_gpio_fsel(33, BCM2835_GPIO_FSEL_ALT3);                  // GPIO33
+    #else
+        /* RS232 */
+        bcm2835_gpio_fsel(RPI_V2_GPIO_P1_08, BCM2835_GPIO_FSEL_ALT0);   // GPIO14
+        bcm2835_gpio_fsel(RPI_V2_GPIO_P1_10, BCM2835_GPIO_FSEL_ALT0);   // GPIO15
+    #endif
 
     while (read_flags().as_int & (1 << 3));
 

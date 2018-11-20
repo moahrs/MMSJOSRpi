@@ -253,6 +253,12 @@ void mmsjos_main(uint32_t r0, uint32_t r1, uint32_t atags)
             printf(" Touch Module... NOT Found.\n");
     #endif
 
+    if (bcm2835_gpio_lev(41))
+        printf("Wifi turned On.\n");
+
+    if (bcm2835_gpio_lev(45))
+        printf("Bluetooth turned On.\n");
+
     printf("Initializing FileSystem... ");
     vbytepic = fsMountDisk();
 
@@ -783,17 +789,23 @@ void processCmd(void) {
                     }
                 }
 
-                while (vretfat == RETURN_OK) {
-                    if (fsReadFile((char*)vparam, ikk, vbuffer, 128) > 0) {
-                        if (fsWriteFile((char*)vparam2, ikk, vbuffer, 128) != RETURN_OK) {
-                            vretfat = ERRO_B_WRITE_FILE;
-                            break;
-                        }
+                if (vretfat)
+                {
+                    while (vretfat == RETURN_OK) {
+                        if (fsReadFile((char*)vparam, ikk, vbuffer, 128) > 0) {
+                            if (fsWriteFile((char*)vparam2, ikk, vbuffer, 128) != RETURN_OK) {
+                                vretfat = ERRO_B_WRITE_FILE;
+                                break;
+                            }
 
-                        ikk += 128;
+                            ikk += 128;
+                        }
+                        else
+                            break;
                     }
-                    else
-                        break;
+
+                    fsCloseFile((char*)vparam, 0);
+                    fsCloseFile((char*)vparam2, 1);
                 }
             }
             else if (!strcmp(linhacomando,"MD") && iy == 2) {
@@ -1423,7 +1435,8 @@ unsigned char loadCFG(unsigned char ptipo) {
 void load232(void)
 {
     unsigned char pByteComm = 0x00, pByteRec, lResult, vOldLin;
-    unsigned int pCount;
+    unsigned int pCount, ix;
+    unsigned long vretfat;
     unsigned char pFileName[15];
     unsigned char *pMemLoad = (unsigned char*)vMemSystemArea;
 
@@ -1469,7 +1482,7 @@ void load232(void)
 
             if (!pByteComm)
             {
-                pFileName[pCount] = pByteRec;
+                pFileName[pCount] = toupper(pByteRec);
                 pCount++;
             }
 
@@ -1489,7 +1502,7 @@ void load232(void)
                 if (pCount % 100 == 0) 
                 {
                     locate(0, vOldLin, NOREPOS_CURSOR);
-                    printf("Receiving Data... %d Byte(s) Received",pCount);
+                    printf("Receiving... %d Byte(s)",pCount);
                 }
 
                 pByteComm = 0x00;
@@ -1526,8 +1539,40 @@ void load232(void)
                     {
                         // Salvar Arquivo
                         locate(0, vOldLin, NOREPOS_CURSOR);
-                        printf("Receiving Data... %d Byte(s) Received",pCount);
-                        printf("\nFile Saved...\n");
+                        printf("Received... %d Byte(s)     ",pCount);
+                        printf("\nSaving File...\n");
+
+                        vretfat = fsOpenFile((char*)pFileName);
+                        if (vretfat != RETURN_OK) {
+                            vretfat = fsCreateFile((char*)pFileName);
+                        }
+
+                        if (vretfat == RETURN_OK)
+                        {
+                            pMemLoad = (unsigned char*)vMemSystemArea;
+                            ix = 0;
+                            while(1)
+                            {
+                                vretfat = fsWriteFile((char*)pFileName, ix, pMemLoad, 128);
+                                if (vretfat != RETURN_OK)
+                                    break;
+
+                                if (ix >= pCount)
+                                    break;
+
+                                pMemLoad += 128;
+                                ix += 128;
+                            }
+
+                            fsCloseFile((char*)pFileName, 1);
+
+                            if (vretfat == RETURN_OK)
+                                printf("File Saved...\n");
+                        }
+
+                        if (vretfat != RETURN_OK)
+                            printf("Erro Saving File (%d)\n",vretfat);
+
                         break;
                     }
                 }
@@ -1668,15 +1713,22 @@ unsigned long fsGetClusterDir (void) {
 }
 
 //-------------------------------------------------------------------------
-unsigned char fsCreateFile(char * vfilename)
+unsigned long fsCreateFile(char * vfilename)
 {
+    unsigned long pRetFat;
+
     // Verifica ja existe arquivo com esse nome
-    if (fsFindInDir(vfilename, TYPE_ALL) < ERRO_D_START)
-        return ERRO_B_FILE_FOUND;
+    pRetFat = fsFindInDir(vfilename, TYPE_ALL);
+    if (pRetFat < ERRO_D_START)
+        return pRetFat;
+    else
+    {
+        pRetFat = fsFindInDir(vfilename, TYPE_CREATE_FILE);
+        if (pRetFat >= ERRO_D_START)
+            return pRetFat;
+    }
 
     // Cria o arquivo com o nome especificado
-    if (fsFindInDir(vfilename, TYPE_CREATE_FILE) >= ERRO_D_START)
-        return ERRO_B_CREATE_FILE;
 
     return RETURN_OK;
 }
@@ -1685,43 +1737,37 @@ unsigned char fsCreateFile(char * vfilename)
 unsigned char fsOpenFile(char * vfilename)
 {
     unsigned int vdirdate;
-    unsigned char ds1307[7], vlinha[12], vtemp[5];
+    unsigned char ds1307[7], vtemp[5];
+    time_t pData;
 
     // Abre o arquivo especificado
     if (fsFindInDir(vfilename, TYPE_FILE) >= ERRO_D_START)
         return ERRO_B_FILE_NOT_FOUND;
 
-    // Ler Data/Hora do PIC
-    /* ver como fazer
-    sendPic(2);
-    sendPic(picDOScmd);
-    sendPic(picDOSdate);
-    recPic();
-    for(ix = 0; ix <= 9; ix++) {
-        recPic();
-        vlinha[ix] = vbytepic;
-    }*/
+    pData = ds1307_read();
+    if (!pData.Error) 
+    {
+        vtemp[0] = BCD2UpperCh(pData.Day);
+        vtemp[1] = BCD2LowerCh(pData.Day);
+        vtemp[2] = 0;
+        ds1307[3] = atoi((char*)vtemp);
+        vtemp[0] = BCD2UpperCh(pData.Month);
+        vtemp[1] = BCD2LowerCh(pData.Month);
+        vtemp[2] = 0;
+        ds1307[4] = atoi((char*)vtemp);
+        vtemp[0] = 0x32;
+        vtemp[1] = 0x30;
+        vtemp[2] = BCD2UpperCh(pData.Year);
+        vtemp[3] = BCD2LowerCh(pData.Year);
+        vtemp[4] = 0;
+        ds1307[5] = atoi((char*)vtemp);
 
-    vtemp[0] = vlinha[0];
-    vtemp[1] = vlinha[1];
-    vtemp[2] = '\0';
-    ds1307[3] = atoi((char*)vtemp);
-    vtemp[0] = vlinha[3];
-    vtemp[1] = vlinha[4];
-    vtemp[2] = '\0';
-    ds1307[4] = atoi((char*)vtemp);
-    vtemp[0] = vlinha[6];
-    vtemp[1] = vlinha[7];
-    vtemp[2] = vlinha[8];
-    vtemp[3] = vlinha[9];
-    vtemp[4] = '\0';
-    ds1307[5] = atoi((char*)vtemp);
+        // Converte para a Data/Hora da FAT32
+        vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
 
-    // Converte para a Data/Hora da FAT32
-    vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
-
-    // Grava nova data no lastaccess
-    vdir->LastAccessDate  = vdirdate;
+        // Grava nova data no lastaccess
+        vdir->LastAccessDate  = vdirdate;
+    }
 
     if (fsUpdateDir() != RETURN_OK)
         return ERRO_B_UPDATE_DIR;
@@ -1729,75 +1775,58 @@ unsigned char fsOpenFile(char * vfilename)
     return RETURN_OK;
 }
 
-
 //-------------------------------------------------------------------------
 unsigned char fsCloseFile(char * vfilename, unsigned char vupdated)
 {
     unsigned int vdirdate, vdirtime;
-    unsigned char ds1307[7], vtemp[5], vlinha[12];
+    unsigned char ds1307[7], vtemp[5];
+    time_t pData;
 
     if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
         if (vupdated) {
-            // Ler Data/Hora do DS1307 - I2C
-            /* ver como fazer
-            sendPic(2);
-            sendPic(picDOScmd);
-            sendPic(picDOSdate);
-            recPic();
-            for(ix = 0; ix <= 9; ix++) {
-                recPic();
-                vlinha[ix] = vbytepic;
-            }*/
+            pData = ds1307_read();
+            if (!pData.Error) 
+            {
+                vtemp[0] = BCD2UpperCh(pData.Day);
+                vtemp[1] = BCD2LowerCh(pData.Day);
+                vtemp[2] = 0;
+                ds1307[3] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Month);
+                vtemp[1] = BCD2LowerCh(pData.Month);
+                vtemp[2] = 0;
+                ds1307[4] = atoi((char*)vtemp);
+                vtemp[0] = 0x32;
+                vtemp[1] = 0x30;
+                vtemp[2] = BCD2UpperCh(pData.Year);
+                vtemp[3] = BCD2LowerCh(pData.Year);
+                vtemp[4] = 0;
+                ds1307[5] = atoi((char*)vtemp);
 
-            vtemp[0] = vlinha[0];
-            vtemp[1] = vlinha[1];
-            vtemp[2] = '\0';
-            ds1307[3] = atoi((char*)vtemp);
-            vtemp[0] = vlinha[3];
-            vtemp[1] = vlinha[4];
-            vtemp[2] = '\0';
-            ds1307[4] = atoi((char*)vtemp);
-            vtemp[0] = vlinha[6];
-            vtemp[1] = vlinha[7];
-            vtemp[2] = vlinha[8];
-            vtemp[3] = vlinha[9];
-            vtemp[4] = '\0';
-            ds1307[5] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Hour);
+                vtemp[1] = BCD2LowerCh(pData.Hour);
+                vtemp[2] = 0;
+                ds1307[0] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Minute);
+                vtemp[1] = BCD2LowerCh(pData.Minute);
+                vtemp[2] = 0;
+                ds1307[1] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Second);
+                vtemp[1] = BCD2LowerCh(pData.Second);
+                vtemp[2] = 0;
+                ds1307[2] = atoi((char*)vtemp);
 
-            /* ver como fazer
-            sendPic(2);
-            sendPic(picDOScmd);
-            sendPic(picDOStime);
-            recPic();
-            for(ix = 0; ix <= 7; ix++) {
-                recPic();
-                vlinha[ix] = vbytepic;
-            }*/
+                // Converte para a Data/Hora da FAT32
+                vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
+                vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
 
-            vtemp[0] = vlinha[0];
-            vtemp[1] = vlinha[1];
-            vtemp[2] = '\0';
-            ds1307[0] = atoi((char*)vtemp);
-            vtemp[0] = vlinha[3];
-            vtemp[1] = vlinha[4];
-            vtemp[2] = '\0';
-            ds1307[1] = atoi((char*)vtemp);
-            vtemp[0] = vlinha[6];
-            vtemp[1] = vlinha[7];
-            vtemp[2] = '\0';
-            ds1307[2] = atoi((char*)vtemp);
+                // Grava nova data no lastaccess e nova data/hora no update date/time
+                vdir->LastAccessDate  = vdirdate;
+                vdir->UpdateTime = vdirtime;
+                vdir->UpdateDate = vdirdate;
 
-            // Converte para a Data/Hora da FAT32
-            vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
-            vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
-
-            // Grava nova data no lastaccess e nova data/hora no update date/time
-            vdir->LastAccessDate  = vdirdate;
-            vdir->UpdateTime = vdirtime;
-            vdir->UpdateDate = vdirdate;
-
-            if (fsUpdateDir() != RETURN_OK)
-                return ERRO_B_UPDATE_DIR;
+                if (fsUpdateDir() != RETURN_OK)
+                    return ERRO_B_UPDATE_DIR;
+            }
         }
     }
     else
@@ -2173,7 +2202,8 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
     unsigned char fnameName[9], fnameExt[4];
     unsigned int ix, iy, iz, vpos, vsecfat, ventrydir;
     unsigned int vdirdate, vdirtime, ikk, ikj, vtemp;
-    unsigned char vcomp, iw, ds1307[7], iww, vtempt[5], vlinha[5];
+    unsigned char vcomp, iw, ds1307[7], iww, vtempt[5];
+    time_t pData;
 
     memset(fnameName, 0x20, 8);
     memset(fnameExt, 0x20, 3);
@@ -2341,54 +2371,37 @@ unsigned long fsFindInDir(char * vname, unsigned char vtype)
                             else
                                 gDataBuffer[ix + 11] = ATTR_DIRECTORY;
 
-                            // Ler Data/Hora do DS1307 - I2C
-                            /* ver como fazer
-                            sendPic(2);
-                            sendPic(picDOScmd);
-                            sendPic(picDOSdate);
-                            recPic();
-                            for(im = 0; im <= 9; im++) {
-                                recPic();
-                                vlinha[im] = vbytepic;
-                            }*/
+                            pData = ds1307_read();
+                            if (!pData.Error) 
+                            {
+                                vtempt[0] = BCD2UpperCh(pData.Day);
+                                vtempt[1] = BCD2LowerCh(pData.Day);
+                                vtempt[2] = 0;
+                                ds1307[3] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Month);
+                                vtempt[1] = BCD2LowerCh(pData.Month);
+                                vtempt[2] = 0;
+                                ds1307[4] = atoi((char*)vtempt);
+                                vtempt[0] = 0x32;
+                                vtempt[1] = 0x30;
+                                vtempt[2] = BCD2UpperCh(pData.Year);
+                                vtempt[3] = BCD2LowerCh(pData.Year);
+                                vtempt[4] = 0;
+                                ds1307[5] = atoi((char*)vtempt);
 
-                            vtempt[0] = vlinha[0];
-                            vtempt[1] = vlinha[1];
-                            vtempt[2] = '\0';
-                            ds1307[3] = atoi((char*)vtempt);
-                            vtempt[0] = vlinha[3];
-                            vtempt[1] = vlinha[4];
-                            vtempt[2] = '\0';
-                            ds1307[4] = atoi((char*)vtempt);
-                            vtempt[0] = vlinha[6];
-                            vtempt[1] = vlinha[7];
-                            vtempt[2] = vlinha[8];
-                            vtempt[3] = vlinha[9];
-                            vtempt[4] = '\0';
-                            ds1307[5] = atoi((char*)vtempt);
-
-                            /* ver como fazer
-                            sendPic(2);
-                            sendPic(picDOScmd);
-                            sendPic(picDOStime);
-                            recPic();
-                            for(im = 0; im <= 7; im++) {
-                                recPic();
-                                vlinha[im] = vbytepic;
-                            }*/
-
-                            vtempt[0] = vlinha[0];
-                            vtempt[1] = vlinha[1];
-                            vtempt[2] = '\0';
-                            ds1307[0] = atoi((char*)vtempt);
-                            vtempt[0] = vlinha[3];
-                            vtempt[1] = vlinha[4];
-                            vtempt[2] = '\0';
-                            ds1307[1] = atoi((char*)vtempt);
-                            vtempt[0] = vlinha[6];
-                            vtempt[1] = vlinha[7];
-                            vtempt[2] = '\0';
-                            ds1307[2] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Hour);
+                                vtempt[1] = BCD2LowerCh(pData.Hour);
+                                vtempt[2] = 0;
+                                ds1307[0] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Minute);
+                                vtempt[1] = BCD2LowerCh(pData.Minute);
+                                vtempt[2] = 0;
+                                ds1307[1] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Second);
+                                vtempt[1] = BCD2LowerCh(pData.Second);
+                                vtempt[2] = 0;
+                                ds1307[2] = atoi((char*)vtempt);
+                            }
 
                             // Converte para a Data/Hora da FAT32
                             vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);

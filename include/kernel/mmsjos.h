@@ -249,7 +249,7 @@ extern unsigned char fsSectorWrite(unsigned long vsector, unsigned char* vbuffer
 extern unsigned char fsSectorRead(unsigned long vsector, unsigned char* vbuffer);
 
 // Funcoes de Manipulacao de Arquivos
-extern unsigned char fsCreateFile(char * vfilename);
+extern unsigned long fsCreateFile(char * vfilename);
 extern unsigned char fsOpenFile(char * vfilename);
 extern unsigned char fsCloseFile(char * vfilename, unsigned char vupdated);
 extern unsigned long fsInfoFile(char * vfilename, unsigned char vtype);
