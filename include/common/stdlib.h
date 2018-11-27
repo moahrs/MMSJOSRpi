@@ -1,5 +1,5 @@
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#pragma GCC diagnostic ignored "-Wpointer-sign"
+//#pragma GCC diagnostic ignored "-Wpointer-sign"
 #pragma GCC diagnostic ignored "-Wsign-compare"
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough="
 #pragma GCC diagnostic ignored "-Wempty-body"
@@ -27,14 +27,14 @@ extern long atol(const char *p);
 extern int atoi(const char *p);
 extern unsigned int toint(unsigned char * s);
 extern int abs(int j);
-extern int strlen(const char *s);
+extern int oldstrlen(const char *s);
 extern int strcmp(const char *cs, const char *ct);
 extern char *strcpy(char *dest, const char *src);
 extern int nanosleep (long pTimeNano);
 extern void Delays(int pTime);
 extern void Delayus(int pTime);
 extern void Delayms(int pTime);
-extern void Delayns(int pTime);
+extern void Delayns(long pTime);
 
 #define toupper(c) \
   (((c) >= 'a' && (c) <= 'z') ? ((c) - 'a' + 'A') : (c))

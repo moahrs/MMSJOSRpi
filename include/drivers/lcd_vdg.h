@@ -1,8 +1,19 @@
+#ifndef __LCD_VDG__
+#define __LCD_VDG__
+
 #define PORTRAIT 0
 #define LANDSCAPE 1
 
-volatile unsigned int x_max = 239;
-volatile unsigned int y_max = 319;
+#define Black 0
+#define Red 63488
+#define Green 2016
+#define Blue 31
+#define White 65535
+#define Purple 61727
+#define Yellow 65504
+#define Cyan 047
+#define d_gray 21130
+#define l_gray 31727
 
 #define TFT_DC RPI_V2_GPIO_P1_15	
 #define TFT_RST RPI_V2_GPIO_P1_16
@@ -19,54 +30,124 @@ volatile unsigned int y_max = 319;
 #define TFT_D7 RPI_V2_GPIO_P1_40	
 #define LS373_LE RPI_V2_GPIO_P1_18
 
-volatile unsigned char pmode = 1;	// 1 - lcd, 2 - vga
-volatile unsigned int pvideo[576];
+typedef struct
+{
+  int x;
+  int y;
+} Coordinate;
 
-unsigned char vmove;
-unsigned int long vtimetec;
-unsigned char pDataRdy;
+class CLcdVdg
+{
+public:
+    CLcdVdg (void);
+    ~CLcdVdg (void);
 
-unsigned int pBaseVideoMem[11][320][240] = {};	// 4MB Video Memory 0x1FC00000 or 0x5FC00000
-unsigned int pBaseVideoAddrX = 0;
-unsigned int pBaseVideoAddrY = 0;
+	boolean Initialize (void);
 
-volatile unsigned char pbytecountw;
-volatile unsigned char pbytecountr;
-volatile unsigned char preadywr;
-volatile unsigned char preadyrd;
-volatile unsigned char preadycs;
+	int TCHVerif(unsigned char pRetAds, Coordinate screen_cal);
+	int commVDG(unsigned char *vparam);
+	void TFT_Dot(unsigned int x,unsigned int y,unsigned int color);
+	void TFT_Fill(unsigned int color);
 
-volatile unsigned char keyBuffer[16];
-volatile unsigned char *keyPntr=keyBuffer;
-volatile unsigned char *keysend=keyBuffer;
-volatile unsigned char *keysend2=keyBuffer;
-volatile unsigned int pxxxreturn[16];
-volatile unsigned int pyyyreturn[16];
-volatile unsigned char ptec[3];
-volatile unsigned char pkeyativo = 0;
-volatile unsigned char pshowkeyontouch = 0;
-volatile unsigned char vtipofimkey = 1;	// 0 - End, 1 - Enter
-volatile unsigned char vcapson = 0;		// 0 - Minusc, 1 - Maiusc
-volatile unsigned char vtipokey = 0;	// 0 - Letra, 1 - Numerico, 2 - Simbolos
-volatile unsigned char vkeyrep = 0;
-unsigned char vkeyteste = 0;
-char irqTchOn = 0;
+private:
+	static CLcdVdg *s_pThis;
+	
+	unsigned char pInit = 0;
+    unsigned int pOldData = 0;
+	volatile unsigned int x_max = 239;
+	volatile unsigned int y_max = 319;
+	volatile unsigned char pmode = 1;	// 1 - lcd, 2 - vga
+	volatile unsigned int pvideo[576];
 
-unsigned int vxx, vyy, keyvxx, keyvyy, vxxf, vyyf, fcor = 65535, bcor = 0;
-unsigned int fcorcur = 65535, bcorcur = 0, fcorgraf = 0;
-unsigned int vxcur, vycur;
-unsigned int long vcurcont = 0;
-unsigned char dfont, cchar;
-unsigned char vcur = 0;
-unsigned char D_ORIENTATION;
-unsigned int iz, ix, iy, pconv1, pconv2;
+	unsigned char vmove;
+	unsigned int long vtimetec;
+	unsigned char pDataRdy;
 
-volatile unsigned char vlaytec[3][12];
-volatile unsigned int vlayx[3][12];
-volatile unsigned char vfirstshowkey = 0;
-volatile unsigned int icount = 0, icountp = 0;
+	unsigned int pBaseVideoAddrX = 0;
+	unsigned int pBaseVideoAddrY = 0;
 
-volatile unsigned char KBD_DATARDY = 0x00;	// Temporario, até ver se vai ser interrupcao ou outra coisa
+	volatile unsigned char pbytecountw;
+	volatile unsigned char pbytecountr;
+	volatile unsigned char preadywr;
+	volatile unsigned char preadyrd;
+	volatile unsigned char preadycs;
 
-Coordinate screen_cal;
+	volatile unsigned char keyBuffer[16];
+	volatile unsigned char *keyPntr=keyBuffer;
+	volatile unsigned char *keysend=keyBuffer;
+	volatile unsigned char *keysend2=keyBuffer;
+	volatile unsigned int pxxxreturn[16];
+	volatile unsigned int pyyyreturn[16];
+	volatile unsigned char ptec[3];
+	volatile unsigned char pkeyativo = 0;
+	volatile unsigned char pshowkeyontouch = 0;
+	volatile unsigned char vtipofimkey = 1;	// 0 - End, 1 - Enter
+	volatile unsigned char vcapson = 0;		// 0 - Minusc, 1 - Maiusc
+	volatile unsigned char vtipokey = 0;	// 0 - Letra, 1 - Numerico, 2 - Simbolos
+	volatile unsigned char vkeyrep = 0;
+	unsigned char vkeyteste = 0;
+	char irqTchOn = 0;
 
+	unsigned int vxx, vyy, keyvxx, keyvyy, vxxf, vyyf, fcor = 65535, bcor = 0;
+	unsigned int fcorcur = 65535, bcorcur = 0, fcorgraf = 0;
+	unsigned int vxcur, vycur;
+	unsigned int long vcurcont = 0;
+	unsigned char dfont, cchar;
+	unsigned char vcur = 0;
+	unsigned char D_ORIENTATION;
+	unsigned int iz, ix, iy, pconv1, pconv2;
+
+	volatile unsigned char vlaytec[3][12];
+	volatile unsigned int vlayx[3][12];
+	volatile unsigned char vfirstshowkey = 0;
+	volatile unsigned int icount = 0, icountp = 0;
+
+	volatile unsigned char KBD_DATARDY = 0x00;	// Temporario, até ver se vai ser interrupcao ou outra coisa
+
+	Coordinate screen_cal;
+
+private:
+	//----------------------------------------------------------------
+	// General Functions
+	//----------------------------------------------------------------
+	int fabs(int val);  
+
+	//----------------------------------------------------------------
+	// LCDG Basic Graphic Functions
+	//----------------------------------------------------------------
+	void Write_Bytes_GPIO(unsigned int wByte);
+	void Write_Command(unsigned int wcommand);
+	void Write_Data(unsigned int wdata);
+	unsigned int Read_Data(void);
+	void Write_Command_Data(unsigned int wcommand,unsigned int Wdata);
+	void TFT_Set_Address(unsigned int PX1,unsigned int PY1,unsigned int PX2,unsigned int PY2);
+	void TFT_Init(void);
+	unsigned int Set_Color(unsigned int R,unsigned int G,unsigned int B);
+
+	//----------------------------------------------------------------
+	// LCDG Advanced Graphic Functions
+	//----------------------------------------------------------------
+	void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_Line(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_H_Line(char X1,char X2,unsigned int y_pos,unsigned int color);
+	void TFT_V_Line(unsigned int Y1,unsigned int Y2,char x_pos,unsigned int color);
+	void TFT_Rectangle(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_Circle(unsigned int x,unsigned int y,char radius,char fill,unsigned int color);
+	void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
+	void TFT_Text(char* S,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
+	void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture);
+	void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y);
+	void TFT_Scroll(unsigned char qtdlin);
+	void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
+	void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
+
+	//----------------------------------------------------------------
+	// Keyboard Functions
+	//----------------------------------------------------------------
+	void ReadKeyMatrix(unsigned char vini, unsigned char vlin, unsigned char vqtd);
+	void ShowKeyboard(unsigned int xposini, unsigned int yposini, unsigned char vnewkey);
+	void HideKeyboard(unsigned int xposini, unsigned int yposini);
+	void ReturnKeyboard(unsigned int xposini, unsigned int yposini, unsigned int vpostx, unsigned int vposty);
+};
+
+#endif

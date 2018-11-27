@@ -1,7 +1,7 @@
 #ifndef DS1307
 #define DS1307 
 
-typedef struct time_t {
+typedef struct {
 	uint8_t Hour;
 	uint8_t Minute;
 	uint8_t Second;

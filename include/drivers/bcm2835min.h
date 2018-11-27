@@ -527,6 +527,7 @@
 #define BCM2835_H
 
 #include <stdint.h>
+#include <circle/timer.h>
 
 #define BCM2835_VERSION 10057 /* Version 1.57 */
 
@@ -545,9 +546,13 @@
 */
 
 /*! This means pin HIGH, true, 3.3volts on a pin. */
+#ifndef HIGH
 #define HIGH 0x1
+#endif
 /*! This means pin LOW, false, 0volts on a pin. */
+#ifndef LOW
 #define LOW  0x0
+#endif
 
 /*! Return the minimum of 2 numbers */
 #ifndef MIN
@@ -601,7 +606,7 @@
 #define BCM2835_BSC1_BASE				0x804000
 
 #define MAP_FAILED 0x0
-unsigned int errno;
+//unsigned int errno;
 
 /*! Physical address and size of the peripherals block
   May be overridden on RPi2

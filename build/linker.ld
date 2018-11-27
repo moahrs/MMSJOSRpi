@@ -10,6 +10,8 @@ SECTIONS
     {
         KEEP(*(.text.boot))
         *(.text)
+
+        _etext = .;
     }
     . = ALIGN(4096); /* align to page size */
     __text_end = .;
@@ -19,6 +21,23 @@ SECTIONS
     {
         *(.rodata)
     }
+
+    .init_array : {
+        __init_start = .;
+
+        *(.init_array*)
+
+        __init_end = .;
+    }
+
+    .ARM.exidx : {
+        __exidx_start = .;
+
+        *(.ARM.exidx*)
+
+        __exidx_end = .;
+    }
+    
     . = ALIGN(4096); /* align to page size */
     __rodata_end = .;
  
@@ -35,6 +54,8 @@ SECTIONS
     {
         bss = .;
         *(.bss)
+
+        _end = .;
     }
     . = ALIGN(4096); /* align to page size */
     __bss_end = .;
