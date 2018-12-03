@@ -255,7 +255,7 @@ int CSerialDevice::Read (void *pBuffer, unsigned nCount)
 {
 	u8 *pChar = (u8 *) pBuffer;
 	assert (pChar != 0);
-
+	int nTimeOut = 0xFFFFFF;
 	int nResult = 0;
 
 	if (m_pInterruptSystem != 0)
@@ -294,6 +294,10 @@ int CSerialDevice::Read (void *pBuffer, unsigned nCount)
 		{
 			if (read32 (ARM_UART0_FR) & FR_RXFE_MASK)
 			{
+				nTimeOut--;
+				if (nTimeOut > 0)
+					continue;
+
 				break;
 			}
 

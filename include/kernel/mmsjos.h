@@ -24,7 +24,7 @@
 class CMMSJOS
 {
 public:
-    CMMSJOS (CScrTft *mScrTft, CBTSubSystem *mBluetooth, CTimer *mTimer, CDWHCIDevice *mDWHCI, CFATFileSystem *mFileSystem);
+    CMMSJOS (CScrTft *mScrTft, CBTSubSystem *mBluetooth, CTimer *mTimer, CDWHCIDevice *mDWHCI, FATFS *mFileSystem, CEMMCDevice *mEMMC);
     ~CMMSJOS (void);
 
 	boolean Initialize (void);
@@ -39,7 +39,7 @@ public:
 	unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress);
 	unsigned char* vMemSystemArea = (unsigned char*)0x00700000;       // 1MB - Atualizar sempre que a compilacao passar desse valor
 	unsigned char* vMemUserArea = (unsigned char*)0x00800000;   // 440MB - Atualizar sempre que a compilacao passar desse valor
-	unsigned char * _strcat (unsigned char * dst, char * cp, char * src);
+	char * _strcat (char *pDest, const char *pSrc);
 	unsigned int bcd2dec(unsigned int bcd);
 	unsigned int datetimetodir(unsigned char hr_day, unsigned char min_month, unsigned char sec_year, unsigned char vtype);
 	unsigned char vmesc[12][3] = {{'J','a','n'},{'F','e','b'},{'M','a','r'},
@@ -49,10 +49,13 @@ public:
 
 private:
 	CScrTft *p_mScrTft;
-	CBTSubSystem *p_mBluetooth;
+	#ifdef __USE_CIRCLE_BLUETOOTH__
+		CBTSubSystem *p_mBluetooth;
+	#endif
 	CTimer *p_mTimer;
 	CDWHCIDevice *p_mDWHCI;
-	CFATFileSystem *p_mFileSystem;
+	FATFS *p_mFileSystem;
+	CEMMCDevice *p_mEMMC;
 	CUSBKeyboardDevice *pKeyboard;
 
 	static CMMSJOS *s_pThis;
@@ -76,7 +79,6 @@ private:
 	unsigned char *vFinalOS; // Atualizar sempre que a compilacao passar desse valor
 	unsigned char arrgDataBuffer[520];
 	unsigned char arrvdiratu[128];
-	unsigned char arrvdiratup[128];
 	unsigned char arrvbufkptr[128];
 	unsigned char arrvbuf[64];
 	unsigned char arrmcfgfile[12288];
@@ -95,7 +97,7 @@ private:
 	unsigned char  *gDataBuffer; // The global data sector buffer
 
 	unsigned int  verro;
-	unsigned char  *vdiratu; // Buffer de pasta atual 128 bytes
+	unsigned char  vdiratu[128]; // Buffer de pasta atual 128 bytes
 	unsigned char  *vdiratup; // Pointer Buffer de pasta atual 128 bytes (SO FUNCIONA NA RAM)
 	unsigned char  vinip; // Inicio da digitacao do prompt
 	unsigned long vbufk; // Ponteiro para o buffer do teclado (SO FUNCIONA NA RAM)
@@ -117,6 +119,8 @@ private:
 	unsigned long  vtotmem; // Quantidade de memoria total, vindo da bios
 	unsigned int  v10ms; // contador 10mS para programas principais na multitarefa
 
+	TCHAR * retPathAndFile(char * cFileName);
+	int fsMount(void);
 	void putPrompt(unsigned int plinadd);
 	void runCmd(void);
 	unsigned char loadCFG(unsigned char ptipo);
@@ -135,7 +139,9 @@ private:
 
 #define MEM_POS_ICONES 1040  // 24 x 24 = 576 Words/Icone = 1152 Bytes/Icone
 
+#ifndef EOF
 #define EOF             ((int)-1)
+#endif
 
 //--- OS Functions
 

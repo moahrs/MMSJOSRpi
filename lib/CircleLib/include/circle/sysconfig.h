@@ -158,7 +158,8 @@
 // The default keyboard map can be overwritten in with the keymap=
 // option in cmdline.txt.
 
-#define DEFAULT_KEYMAP		"DE"
+#define DEFAULT_KEYMAP		"BR"
+//#define DEFAULT_KEYMAP		"DE"
 //#define DEFAULT_KEYMAP		"ES"
 //#define DEFAULT_KEYMAP		"FR"
 //#define DEFAULT_KEYMAP		"IT"

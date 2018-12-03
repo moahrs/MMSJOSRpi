@@ -13,7 +13,8 @@ LFLAGS= -ffreestanding -O2 -nostdlib -LD:\Projetos\gcc-arm-none-eabi-7-2018-q2-u
 LIBS= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/input/libinput.a \
 	  $(CIRCLEHOME)/lib/fs/libfs.a \
-	  $(CIRCLEHOME)/lib/fs/fat/libfatfs.a \
+	  $(CIRCLEHOME)/addon/fatfs/libfatfs.a \
+	  $(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	  $(CIRCLEHOME)/lib/bt/libbluetooth.a \
 	  $(CIRCLEHOME)/lib/sched/libsched.a \
 	  $(CIRCLEHOME)/lib/libcircle.a

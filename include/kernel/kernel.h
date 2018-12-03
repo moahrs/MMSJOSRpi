@@ -3,8 +3,6 @@
 
 #include <circlelib/circlelib.h>
 
-#define __USE_CIRCLE_BLUETOOTH__
-
 enum TShutdownMode
 {
     ShutdownNone,
@@ -43,7 +41,8 @@ public:
     #ifdef __USE_CIRCLE_BLUETOOTH__
         CBTSubSystem        m_Bluetooth;
     #endif
-    CFATFileSystem      m_FileSystem;
+    FATFS               m_FileSystem;
+    CEMMCDevice         m_EMMC;
     CLcdTch             m_LcdTch;
     CMMSJOS             m_MMSJOS;
 };

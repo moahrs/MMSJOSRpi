@@ -68,7 +68,6 @@ public:
 	/// \return "WWW MMM DD HH:MM:SS YYYY"
 	const char *GetString (void);
 
-private:
 	static boolean IsLeapYear (unsigned nYear);
 	static unsigned GetDaysOfMonth (unsigned nMonth, unsigned nYear);
 

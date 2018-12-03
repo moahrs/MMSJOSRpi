@@ -88,6 +88,8 @@ const char *CKeyMap::s_KeyStrings[KeyMaxCode-KeySpace] =
 const u16 CKeyMap::s_DefaultMap[][PHY_MAX_CODE+1][K_ALTSHIFTTAB+1] =
 {
 	{
+		#include "keymap_br.h"
+	}, {
 		#include "keymap_de.h"
 	}, {
 		#include "keymap_es.h"
@@ -104,6 +106,7 @@ const u16 CKeyMap::s_DefaultMap[][PHY_MAX_CODE+1][K_ALTSHIFTTAB+1] =
 
 const char *CKeyMap::s_MapDirectory[] =		// same (alphabetical) order as in s_DefaultMap[]
 {
+	"BR",
 	"DE",
 	"ES",
 	"FR",

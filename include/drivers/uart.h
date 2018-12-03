@@ -85,12 +85,14 @@ void uart_init();
 uart_flags_t read_flags(void);
 
 void uart_putc(unsigned char c);
-unsigned char uart_getc();
+int uart_getc(unsigned long pTimeOut);
 
 extern void flush_uart(void);
+extern int uart_setbaud(int pBaud);
 extern char getc(void);
 extern void putc(char c);
 extern void puts(const char * s);
+extern void getst(char * buf, int buflen);
 extern void gets(char * buf, int buflen);
 
 #endif
