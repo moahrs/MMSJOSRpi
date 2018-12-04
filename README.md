@@ -7,10 +7,8 @@ Projeto em Andamento.
 
 Coisas para fazer:
 - Ajustar parte Grafica (MGI)
-- Verificar carregamento de arquivos
 - Alocação de memoria dinamicamente
-- Incluir GATT no bluetooth (da rsta2/circle lib, por enquanto só faz inquiry)
-- Acertar FAT (da rsta2/circle lib)
+- Retirado complemanete uso de bluetooth e wifi do pi 0 w. Motivo: Falta de informações, documentação pífia. Com isso estou usando HM-10 pra Bluetooth e esp8266 pra wifi
 
 Futuro (A placa tem esses 2 componentes nativos):
 - Incluir Rede WiFi
