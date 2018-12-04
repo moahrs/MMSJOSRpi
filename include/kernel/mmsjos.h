@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------
-* MMSJ_OS.H - Arquivo de Header do Sistema Operacional
+* MMSJOS.H - Arquivo de Header do Sistema Operacional
 * Author: Moacir Silveira Junior (moacir.silveira@gmail.com)
-* Date: 04/07/2013
+* Date: 02/11/2018
 *------------------------------------------------------------------------------*/
 
 #ifndef __MMSJOS__
@@ -61,7 +61,7 @@ private:
 	static CMMSJOS *s_pThis;
 	static char vkeybuffer[255];
 
-	unsigned char* pVersionSO = (unsigned char*)"0.4";
+	unsigned char* pVersionSO = (unsigned char*)"0.5";
 
     unsigned int vbytepic = 0, vbytevdg;
     unsigned char *vbufptr;

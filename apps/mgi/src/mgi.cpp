@@ -1,3 +1,17 @@
+/********************************************************************************
+*
+* Icones MGI
+* 50 = Home
+* 51 = Run
+* 52 = New Icon
+* 53 = Del Icon
+* 54 = MMSJDOS
+* 55 = Setup MGI
+* 56 = Exit
+* 57 = Hourglass
+*
+********************************************************************************/
+
 #include <circlelib/circlelib.h>
 #include <stddef.h>
 #include <stdint.h>
