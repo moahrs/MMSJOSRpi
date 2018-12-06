@@ -47,6 +47,8 @@ private:
 	CSynchronizationEvent m_Event;
 
 	u8 *m_pBuffer;
+
+	u8 mConnComplete;
 };
 
 #endif

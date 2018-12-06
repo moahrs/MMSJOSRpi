@@ -21,9 +21,13 @@
 #include <circle/bt/bthcilayer.h>
 #include <circle/bt/bcmvendor.h>
 #include <circle/sched/scheduler.h>
+#include <circle/bt/btglobal.h>
 #include <circle/logger.h>
 #include <circle/util.h>
 #include <assert.h>
+
+u8 mBtLocalBDAddr[6];
+u8 mBtDeviceBDAddr[6];
 
 static const u8 Firmware[] =
 {
@@ -168,6 +172,7 @@ void CBTDeviceManager::Process (void)
 				assert (nLength >= sizeof (TBTHCIEventReadBDAddrComplete));
 				TBTHCIEventReadBDAddrComplete *pEvent = (TBTHCIEventReadBDAddrComplete *) pHeader;
 				memcpy (m_LocalBDAddr, pEvent->BDAddr, BT_BD_ADDR_SIZE);
+				memcpy (mBtLocalBDAddr, pEvent->BDAddr, BT_BD_ADDR_SIZE);
 
 				CLogger::Get ()->Write (FromDeviceManager, LogNotice,
 							"Local BD address is %02X:%02X:%02X:%02X:%02X:%02X",
@@ -230,7 +235,7 @@ void CBTDeviceManager::Process (void)
 			m_pHCILayer->SetCommandPackets (pCommandStatus->NumHCICommandPackets);
 			} break;
 
-		default: 
+		default:
 			assert (0);
 			break;
 		}

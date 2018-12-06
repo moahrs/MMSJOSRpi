@@ -63,9 +63,12 @@ struct TBTHCICommandHeader
 	#define OP_CODE_REMOTE_NAME_REQUEST	(OGF_LINK_CONTROL | 0x019)
 #define OGF_HCI_CONTROL_BASEBAND	(3 << 10)
 	#define OP_CODE_RESET			(OGF_HCI_CONTROL_BASEBAND | 0x003)
+	#define OP_HCI_ACCEPT_CONNECT_REQUEST			(OGF_LINK_CONTROL | 0x009)
+	#define OP_CODE_PIN_CODE_REQUEST_REPLY (OGF_LINK_CONTROL | 0x00D)
 	#define OP_CODE_WRITE_LOCAL_NAME	(OGF_HCI_CONTROL_BASEBAND | 0x013)
 	#define OP_CODE_WRITE_SCAN_ENABLE	(OGF_HCI_CONTROL_BASEBAND | 0x01A)
 	#define OP_CODE_WRITE_CLASS_OF_DEVICE	(OGF_HCI_CONTROL_BASEBAND | 0x024)
+	#define OP_HCI_ACCEPT_SYNC_CONNECT_REQUEST (OGF_LINK_CONTROL | 0x029)
 #define OGF_INFORMATIONAL_COMMANDS	(4 << 10)
 	#define OP_CODE_READ_BD_ADDR		(OGF_INFORMATIONAL_COMMANDS | 0x009)
 #define OGF_VENDOR_COMMANDS		(0x3F << 10)
@@ -81,6 +84,7 @@ struct TBTHCIInquiryCommand
 
 	u8	LAP[BT_CLASS_SIZE];
 #define INQUIRY_LAP_GIAC		0x9E8B33	// General Inquiry Access Code
+#define INQUIRY_LAP_LIAC		0x9E8B00	// Limited Inquiry Access Code
 	u8	InquiryLength;
 #define INQUIRY_LENGTH_MIN		0x01		// 1.28s
 #define INQUIRY_LENGTH_MAX		0x30		// 61.44s
@@ -102,6 +106,38 @@ struct TBTHCIRemoteNameRequestCommand
 	u8	Reserved;				// set to 0
 	u16	ClockOffset;
 #define CLOCK_OFFSET_INVALID		0		// bit 15 is not set
+}
+PACKED;
+
+struct TBTHCIAcceptConnectionRequestCommand
+{
+	TBTHCICommandHeader	Header;
+
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8	RemainSlave;
+}
+PACKED;
+
+struct TBTHCIAcceptSyncConnectionRequestCommand
+{
+	TBTHCICommandHeader	Header;
+
+	u8  BDAddr[BT_BD_ADDR_SIZE];
+	u32 Transmit_Bandwidth;
+	u32 Receive_Bandwidth;
+	u16 Max_Latency;
+	u16 Voice_Setting;
+	u8  Retransmission_Effort;
+	u16 Packet_Type;
+} PACKED;
+
+struct TBTHCIPinCodeRequestReplyCommand
+{
+	TBTHCICommandHeader	Header;
+
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8	PinCodeLength;
+	u8  PinCode[16];
 }
 PACKED;
 
@@ -140,9 +176,18 @@ struct TBTHCIEventHeader
 	u8	EventCode;
 #define EVENT_CODE_INQUIRY_COMPLETE		0x01
 #define EVENT_CODE_INQUIRY_RESULT		0x02
+#define EVENT_CODE_CONNECT_COMPLETE     0x03
+#define EVENT_CODE_CONNECT_REQUEST		0x04
+#define EVENT_CODE_DISCONNECT   		0x05
+#define EVENT_CODE_AUTH_COMPLETE		0x06
 #define EVENT_CODE_REMOTE_NAME_REQUEST_COMPLETE	0x07
+#define EVENT_ENCRYPTION_CHANGE         0x08
 #define EVENT_CODE_COMMAND_COMPLETE		0x0E
 #define EVENT_CODE_COMMAND_STATUS		0x0F
+#define EVENT_CODE_PIN_CODE_REQUEST     0x16
+#define EVENT_LINK_KEY_NOTIFICATION		0x18
+#define EVENT_CODE_MAX_SLOTS_CHANGE     0x1B
+#define EVENT_CODE_SYNC_CONNECT_COMPLETE 0x2C
 	u8	ParameterTotalLength;
 }
 PACKED;
@@ -172,6 +217,100 @@ struct TBTHCIEventInquiryResult
 #define INQUIRY_RESP_PAGE_SCAN_REP_MODE(p, i)	((p)->Data[(p)->NumResponses*BT_BD_ADDR_SIZE + (i)])
 #define INQUIRY_RESP_CLASS_OF_DEVICE(p, i)	(&(p)->Data[(p)->NumResponses*(BT_BD_ADDR_SIZE+1+2) \
 							   + (i)*BT_CLASS_SIZE])
+}
+PACKED;
+
+struct TBTHCIEventPinCodeRequest
+{
+	TBTHCIEventHeader	Header;
+
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+}
+PACKED;
+
+struct TBTHCIEventConnectRequest
+{
+	TBTHCIEventHeader	Header;
+
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8  ClassOfDevice;
+	u8  LinkType;
+}
+PACKED;
+
+struct TBTHCIEventMaxSlotsChange
+{
+	TBTHCIEventHeader	Header;
+
+	u16 ConnHandle;
+	u8  LMPMaxSlots;
+}
+PACKED;
+
+struct TBTHCIEventAuthComplete
+{
+	TBTHCIEventHeader	Header;
+
+	u8	Status;
+	u16 ConnHandle;
+}
+PACKED;
+
+struct TBTHCIEventEncryptionChange
+{
+	TBTHCIEventHeader	Header;
+
+	u8	Status;
+	u16 ConnHandle;
+	u8  Encryption_Enabled;
+}
+PACKED;
+
+struct TBTHCIEventLinkKeyNotification
+{
+	TBTHCIEventHeader	Header;
+
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8  Link_Key[16];
+	u8  Key_Type;
+}
+PACKED;
+
+struct TBTHCIEventDisconnect
+{
+	TBTHCIEventHeader	Header;
+
+	u8	Status;
+	u16 ConnHandle;
+	u8  Reason;
+}
+PACKED;
+
+struct TBTHCIEventConnectComplete
+{
+	TBTHCIEventHeader	Header;
+
+	u8	Status;
+	u16 ConnHandle;
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8  LinkType;
+	u8  EncryptEnabled;
+}
+PACKED;
+
+struct TBTHCIEventSyncConnectComplete
+{
+	TBTHCIEventHeader	Header;
+
+	u8	Status;
+	u16 ConnHandle;
+	u8	BDAddr[BT_BD_ADDR_SIZE];
+	u8  LinkType;
+	u8  Transmission_Interval;
+	u8  Retransmission_Window;
+	u16 Rx_Packet_Length;
+	u16 Tx_Packet_Length;
+	u8  Air_Mode;
 }
 PACKED;
 

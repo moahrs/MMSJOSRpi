@@ -19,6 +19,8 @@
 //
 #include <circle/bt/btlogicallayer.h>
 #include <circle/bt/bluetooth.h>
+#include <circle/bt/btglobal.h>
+#include <circle/logger.h>
 #include <circle/util.h>
 #include <assert.h>
 
@@ -43,6 +45,7 @@ boolean CBTLogicalLayer::Initialize (void)
 {
 	m_pBuffer = new u8[BT_MAX_DATA_SIZE];
 	assert (m_pBuffer != 0);
+	mConnComplete = 0x00;
 
 	return TRUE;
 }
@@ -122,7 +125,188 @@ void CBTLogicalLayer::Process (void)
 			}
 			} break;
 
+		case EVENT_CODE_COMMAND_COMPLETE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Command Complete\n");
+
+				assert (nLength >= sizeof (TBTHCIEventCommandComplete));
+				TBTHCIEventCommandComplete *pEvent = (TBTHCIEventCommandComplete *) pHeader;
+
+				if (pEvent->Status == BT_STATUS_SUCCESS)
+				{
+				}
+				else
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+		} break;
+
+		case EVENT_CODE_DISCONNECT: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Disconnect Received\n");
+
+				assert (nLength >= sizeof (TBTHCIEventDisconnect));
+				TBTHCIEventDisconnect *pEvent = (TBTHCIEventDisconnect *) pHeader;
+
+				if (pEvent->Status != BT_STATUS_SUCCESS)
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+		} break;
+
+		case EVENT_CODE_AUTH_COMPLETE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Auth Complete\n");
+
+				assert (nLength >= sizeof (TBTHCIEventAuthComplete));
+				TBTHCIEventAuthComplete *pEvent = (TBTHCIEventAuthComplete *) pHeader;
+
+				if (pEvent->Status != BT_STATUS_SUCCESS)
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+		} break;
+
+		case EVENT_CODE_CONNECT_REQUEST: {
+				assert (nLength >= sizeof (TBTHCIEventConnectRequest));
+				TBTHCIEventConnectRequest *pEvent = (TBTHCIEventConnectRequest *) pHeader;
+
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Connect Request from BDAddr: %02x:%02x:%02x:%02x:%02x:%02x ClassDev: %06x LinkTp: %02x\n", 
+										(unsigned) pEvent->BDAddr[5],
+										(unsigned) pEvent->BDAddr[4],
+										(unsigned) pEvent->BDAddr[3],
+										(unsigned) pEvent->BDAddr[2],
+										(unsigned) pEvent->BDAddr[1],
+										(unsigned) pEvent->BDAddr[0],
+										pEvent->ClassOfDevice,
+										pEvent->LinkType);
+
+				if (pEvent->LinkType == 0x01)	// ACL
+				{
+					TBTHCIAcceptConnectionRequestCommand Cmd;
+					Cmd.Header.OpCode = OP_HCI_ACCEPT_CONNECT_REQUEST;
+					Cmd.Header.ParameterTotalLength = PARM_TOTAL_LEN (Cmd);
+					memcpy (Cmd.BDAddr, pEvent->BDAddr, BT_BD_ADDR_SIZE);
+					Cmd.RemainSlave = 0x01;
+					m_pHCILayer->SendCommand (&Cmd, sizeof Cmd);
+				}
+				else	// SCO or eSCO
+				{					
+					TBTHCIAcceptSyncConnectionRequestCommand Cmd;
+					Cmd.Header.OpCode = OP_HCI_ACCEPT_SYNC_CONNECT_REQUEST;
+					Cmd.Header.ParameterTotalLength = PARM_TOTAL_LEN (Cmd);
+					memcpy (Cmd.BDAddr, pEvent->BDAddr, BT_BD_ADDR_SIZE);
+					Cmd.Transmit_Bandwidth = 0x00001F40;
+					Cmd.Receive_Bandwidth = 0x00001F40;
+					Cmd.Max_Latency = 0xFFFF;
+					Cmd.Voice_Setting = 0b0011000000;
+					Cmd.Retransmission_Effort = 0xFF;
+					Cmd.Packet_Type = 0x003F;
+					m_pHCILayer->SendCommand (&Cmd, sizeof Cmd);
+				}
+			} break;
+
+		case EVENT_CODE_PIN_CODE_REQUEST: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Pin Code Request\n");
+
+				assert (nLength >= sizeof (TBTHCIEventPinCodeRequest));
+				TBTHCIEventPinCodeRequest *pEvent = (TBTHCIEventPinCodeRequest *) pHeader;
+
+				if (mConnComplete)
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Pin Code Sent\n");
+
+					TBTHCIPinCodeRequestReplyCommand Cmd;
+					Cmd.Header.OpCode = OP_CODE_PIN_CODE_REQUEST_REPLY;
+					Cmd.Header.ParameterTotalLength = PARM_TOTAL_LEN (Cmd);
+					memcpy (Cmd.BDAddr, pEvent->BDAddr, BT_BD_ADDR_SIZE);
+					Cmd.PinCodeLength = 4;
+					memset(Cmd.PinCode,0x00,16);
+					Cmd.PinCode[3] = 0x34;
+					Cmd.PinCode[2] = 0x33;
+					Cmd.PinCode[1] = 0x32;
+					Cmd.PinCode[0] = 0x31;
+					m_pHCILayer->SendCommand (&Cmd, sizeof Cmd);
+				}
+			} break;
+
+		case EVENT_LINK_KEY_NOTIFICATION: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Link Key Notify\n");
+
+				assert (nLength >= sizeof (TBTHCIEventLinkKeyNotification));
+				TBTHCIEventLinkKeyNotification *pEvent = (TBTHCIEventLinkKeyNotification *) pHeader;
+			} break;
+
+		case EVENT_ENCRYPTION_CHANGE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Encrypt Change\n");
+
+				assert (nLength >= sizeof (TBTHCIEventEncryptionChange));
+				TBTHCIEventEncryptionChange *pEvent = (TBTHCIEventEncryptionChange *) pHeader;
+
+				if (pEvent->Status != BT_STATUS_SUCCESS)
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+			} break;
+
+		case EVENT_CODE_SYNC_CONNECT_COMPLETE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Sync Connect Complete\n");
+
+				assert (nLength >= sizeof (TBTHCIEventSyncConnectComplete));
+				TBTHCIEventSyncConnectComplete *pEvent = (TBTHCIEventSyncConnectComplete *) pHeader;
+
+				if (pEvent->Status == BT_STATUS_SUCCESS)
+				{
+					mConnComplete = 0x01;
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Handle: %04x BDAddr: %02x:%02x:%02x:%02x:%02x:%02x LinkTp: %02x\n", 
+											pEvent->ConnHandle, 
+											(unsigned) pEvent->BDAddr[5],
+											(unsigned) pEvent->BDAddr[4],
+											(unsigned) pEvent->BDAddr[3],
+											(unsigned) pEvent->BDAddr[2],
+											(unsigned) pEvent->BDAddr[1],
+											(unsigned) pEvent->BDAddr[0],
+											pEvent->LinkType);
+				}
+				else
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+		} break;
+
+		case EVENT_CODE_MAX_SLOTS_CHANGE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Max Slots Change\n");
+
+				assert (nLength >= sizeof (TBTHCIEventMaxSlotsChange));
+				TBTHCIEventMaxSlotsChange *pEvent = (TBTHCIEventMaxSlotsChange *) pHeader;
+		} break;
+
+		case EVENT_CODE_CONNECT_COMPLETE: {
+				CLogger::Get ()->Write ("BT> ", LogNotice, "Connect Complete\n");
+
+				assert (nLength >= sizeof (TBTHCIEventConnectComplete));
+				TBTHCIEventConnectComplete *pEvent = (TBTHCIEventConnectComplete *) pHeader;
+
+				if (pEvent->Status == BT_STATUS_SUCCESS)
+				{
+					mConnComplete = 0x01;
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Handle: %04x BDAddr: %02x:%02x:%02x:%02x:%02x:%02x LinkTp: %02x EncrpEn: %02x\n", 
+											pEvent->ConnHandle, 
+											(unsigned) pEvent->BDAddr[5],
+											(unsigned) pEvent->BDAddr[4],
+											(unsigned) pEvent->BDAddr[3],
+											(unsigned) pEvent->BDAddr[2],
+											(unsigned) pEvent->BDAddr[1],
+											(unsigned) pEvent->BDAddr[0],
+											pEvent->LinkType,
+											pEvent->EncryptEnabled);
+				}
+				else
+				{
+					CLogger::Get ()->Write ("BT> ", LogNotice, "Status: %04x", pEvent->Status);
+				}
+			} break;
+
 		default:
+			if (pHeader->EventCode != 0x00)
+				CLogger::Get ()->Write ("BT> ", LogNotice, "%04X.\n",pHeader->EventCode);
 			break;
 		}
 	}
@@ -142,9 +326,9 @@ CBTInquiryResults *CBTLogicalLayer::Inquiry (unsigned nSeconds)
 	TBTHCIInquiryCommand Cmd;
 	Cmd.Header.OpCode = OP_CODE_INQUIRY;
 	Cmd.Header.ParameterTotalLength = PARM_TOTAL_LEN (Cmd);
-	Cmd.LAP[0] = INQUIRY_LAP_GIAC       & 0xFF;
-	Cmd.LAP[1] = INQUIRY_LAP_GIAC >> 8  & 0xFF;
-	Cmd.LAP[2] = INQUIRY_LAP_GIAC >> 16 & 0xFF;
+	Cmd.LAP[0] = INQUIRY_LAP_LIAC       & 0xFF;
+	Cmd.LAP[1] = INQUIRY_LAP_LIAC >> 8  & 0xFF;
+	Cmd.LAP[2] = INQUIRY_LAP_LIAC >> 16 & 0xFF;
 	Cmd.InquiryLength = INQUIRY_LENGTH (nSeconds);
 	Cmd.NumResponses = INQUIRY_NUM_RESPONSES_UNLIMITED;
 	m_pHCILayer->SendCommand (&Cmd, sizeof Cmd);
