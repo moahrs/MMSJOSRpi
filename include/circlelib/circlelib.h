@@ -2,6 +2,9 @@
 #define _circle_lib_h
 
 #define INQUIRY_SECONDS     60
+#define INQUIRY_LIMITED_DISCOVERY   1
+#define INQUIRY_FIND_DEVICES        0
+
 #define __USE_TFT_LCD__
 #define __USE_CIRCLE_BLUETOOTH__
 #define __USE_BLUETOOTH_ZERO_W__

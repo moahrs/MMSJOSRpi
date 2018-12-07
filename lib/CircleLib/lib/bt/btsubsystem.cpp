@@ -85,7 +85,7 @@ void CBTSubSystem::Process (void)
 	m_LogicalLayer.Process ();
 }
 
-CBTInquiryResults *CBTSubSystem::Inquiry (unsigned nSeconds)
+CBTInquiryResults *CBTSubSystem::Inquiry (unsigned nSeconds, unsigned nType)
 {
-	return m_LogicalLayer.Inquiry (nSeconds);
+	return m_LogicalLayer.Inquiry (nSeconds, nType);
 }

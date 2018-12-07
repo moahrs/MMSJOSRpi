@@ -28,6 +28,7 @@
 
 u8 mBtLocalBDAddr[6];
 u8 mBtDeviceBDAddr[6];
+u16 mBtHandleActive;
 
 static const u8 Firmware[] =
 {

@@ -36,7 +36,7 @@ public:
 	void Process (void);
 
 	// returns 0 on failure, result must be deleted by caller otherwise
-	CBTInquiryResults *Inquiry (unsigned nSeconds);		// 1 <= nSeconds <= 61
+	CBTInquiryResults *Inquiry (unsigned nSeconds, unsigned tType);		// 1 <= nSeconds <= 61
 
 private:
 	CBTHCILayer *m_pHCILayer;
