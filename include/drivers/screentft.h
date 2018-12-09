@@ -2,6 +2,7 @@
 #define __SCRTFT__
 
 #include <circle/device.h>
+#include <drivers/lcd_vdg.h>
 
 class CScrTft : public CDevice
 {
@@ -33,6 +34,10 @@ public:
 	unsigned int  xpos;
 	unsigned int  ypos;
 
+	unsigned GetWidth (void) const;
+	unsigned GetHeight (void) const;
+	unsigned GetColumns (void) const;
+	unsigned GetRows (void) const;
 	void clearScr();
 	void clearScr(unsigned int pcolor);
 	int Write (const void *pBuffer, unsigned nCount);
@@ -48,10 +53,7 @@ public:
 	void blinkCursor(void);
 	unsigned char verifKey(void);
 	unsigned char getKey(void);
-	void putS(const char* str);
-	int printf(const char *format, ...);
-	int vsprintf(char *str, const char *format, va_list listPointer);
-	int sprintf(char *str, const char *format, ...);
+	static CScrTft *Get (void);
 
 private:
 	CLcdVdg *p_mLcdVdg;

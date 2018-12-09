@@ -1,0 +1,1602 @@
+#include <stddef.h>
+#include <stdint.h>
+#include <common/stdio.h>
+#include <common/stdlib.h>
+#include <drivers/bcm2835min.h>
+#include <disk/diskio.h>
+
+unsigned char* pVersionSO = (unsigned char*)"0.1";
+
+unsigned int vcorwb;
+unsigned int vcorwf;
+unsigned char* vMemSystemArea = (unsigned char*)0x00700000;       // 1MB - Atualizar sempre que a compilacao passar desse valor
+unsigned char* vMemUserArea = (unsigned char*)0x00800000;   // 440MB - Atualizar sempre que a compilacao passar desse valor
+unsigned char paramVDG[255];
+unsigned char arrgDataBuffer[520];
+unsigned char arrvdiratu[128];
+unsigned char arrvdiratup[128];
+unsigned char arrvbufkptr[128];
+unsigned char arrvbuf[64];
+unsigned char arrmcfgfile[12288];
+unsigned long vtotclock;
+uint16_t vboardfirm;
+uint16_t vboardmodel;
+uint16_t vboardrev;
+uint8_t vboardmacaddr[8];
+uint16_t vboardserial;
+
+extern uint32_t RPI_ARM_CPU_ID;               // Raspberry Pi Zero W CPU ID
+
+mBoxInfoResp MBOX_INFO_BOARD;
+FAT32_DIR varToPtrvdir;
+FAT32_DIR *vdir = &varToPtrvdir;
+DISK varToPtrvdisk;
+DISK *vdisk = &varToPtrvdisk;
+
+unsigned char strValidChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ^&'@{}[],$=!-#()%.+~_";
+
+unsigned char vmesc[12][3] = {{'J','a','n'},{'F','e','b'},{'M','a','r'},
+                           {'A','p','r'},{'M','a','y'},{'J','u','n'},
+                           {'J','u','l'},{'A','u','g'},{'S','e','p'},
+                           {'O','c','t'},{'N','o','v'},{'D','e','c'}};
+
+//-----------------------------------------------------------------------------
+// FAT32 Functions
+//-----------------------------------------------------------------------------
+unsigned char CFat32::fsMountDisk(void)
+{
+    DSTATUS sta;
+    unsigned char ixTimeout = 0;
+
+    //  mailbox_emmc_clock(1);
+    
+//    extDebugActiv = 1;
+    sta = disk_initialize(diskDrv);
+//    extDebugActiv = 0;
+    if (sta & STA_NOINIT) {
+        return ERRO_B_OPEN_DISK;
+    }
+
+    // LER MBR
+    ixTimeout = 4;
+    while (1) 
+    {
+        ixTimeout--;
+        if (disk_read(diskDrv, gDataBuffer, 0x00000000, 1) != RES_OK)
+        {
+            if (ixTimeout == 0)
+                return ERRO_B_READ_DISK;
+        }
+        else
+            break;
+    }
+
+    vdisk->firsts  = (((unsigned long)gDataBuffer[457] << 24) & 0xFF000000);
+    vdisk->firsts |= (((unsigned long)gDataBuffer[456] << 16) & 0x00FF0000);
+    vdisk->firsts |= (((unsigned long)gDataBuffer[455] << 8) & 0x0000FF00);
+    vdisk->firsts |= ((unsigned long)gDataBuffer[454] & 0x000000FF);
+
+    // LER FIRST CLUSTER
+    if (disk_read(diskDrv, gDataBuffer, vdisk->firsts, 1) != RES_OK)
+        return ERRO_B_READ_DISK;
+
+    vdisk->reserv  = (unsigned int)gDataBuffer[15] << 8;
+    vdisk->reserv |= (unsigned int)gDataBuffer[14];
+
+    vdisk->fat = vdisk->reserv + vdisk->firsts;
+
+    vdisk->sectorSize  = (unsigned long)gDataBuffer[12] << 8;
+    vdisk->sectorSize |= (unsigned long)gDataBuffer[11];
+    vdisk->SecPerClus = gDataBuffer[13];
+
+    vdisk->fatsize  = (unsigned long)gDataBuffer[39] << 24;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[38] << 16;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[37] << 8;
+    vdisk->fatsize |= (unsigned long)gDataBuffer[36];
+
+    vdisk->root  = (unsigned long)gDataBuffer[47] << 24;
+    vdisk->root |= (unsigned long)gDataBuffer[46] << 16;
+    vdisk->root |= (unsigned long)gDataBuffer[45] << 8;
+    vdisk->root |= (unsigned long)gDataBuffer[44];
+
+    vdisk->type = FAT32;
+
+    vdisk->data = vdisk->reserv + (2 * vdisk->fatsize);
+
+    vclusterdir = vdisk->root;
+
+/*    printf("\nfirsts: %x. ", vdisk->firsts);
+    printf("\nreserv: %x. ", vdisk->reserv);
+    printf("\nfat: %x. ", vdisk->fat);
+    printf("\nsectorSize: %x. ", vdisk->sectorSize);
+    printf("\nSecPerClus: %x. ", vdisk->SecPerClus);
+    printf("\nfatsize: %x. ", vdisk->fatsize);
+    printf("\nroot: %x. ", vdisk->root);
+    printf("\ndata: %x. ", vdisk->data);*/
+
+    return RETURN_OK;
+}
+
+void CFat32::fsSetClusterDir (unsigned long vclusdiratu) {
+    vclusterdir = vclusdiratu;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsGetClusterDir (void) {
+    return vclusterdir;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsCreateFile(char * vfilename)
+{
+    unsigned long pRetFat;
+
+    // Verifica ja existe arquivo com esse nome
+    pRetFat = fsFindInDir(vfilename, TYPE_ALL);
+    if (pRetFat < ERRO_D_START)
+        return pRetFat;
+    else
+    {
+        pRetFat = fsFindInDir(vfilename, TYPE_CREATE_FILE);
+        if (pRetFat >= ERRO_D_START)
+            return pRetFat;
+    }
+
+    // Cria o arquivo com o nome especificado
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsOpenFile(char * vfilename)
+{
+    unsigned int vdirdate;
+    unsigned char ds1307[7], vtemp[5];
+    time_t pData;
+
+    // Abre o arquivo especificado
+    if (fsFindInDir(vfilename, TYPE_FILE) >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;
+
+    pData = ds1307_read();
+    if (!pData.Error) 
+    {
+        vtemp[0] = BCD2UpperCh(pData.Day);
+        vtemp[1] = BCD2LowerCh(pData.Day);
+        vtemp[2] = 0;
+        ds1307[3] = atoi((char*)vtemp);
+        vtemp[0] = BCD2UpperCh(pData.Month);
+        vtemp[1] = BCD2LowerCh(pData.Month);
+        vtemp[2] = 0;
+        ds1307[4] = atoi((char*)vtemp);
+        vtemp[0] = 0x32;
+        vtemp[1] = 0x30;
+        vtemp[2] = BCD2UpperCh(pData.Year);
+        vtemp[3] = BCD2LowerCh(pData.Year);
+        vtemp[4] = 0;
+        ds1307[5] = atoi((char*)vtemp);
+
+        // Converte para a Data/Hora da FAT32
+        vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+
+        // Grava nova data no lastaccess
+        vdir->LastAccessDate  = vdirdate;
+    }
+
+    if (fsUpdateDir() != RETURN_OK)
+        return ERRO_B_UPDATE_DIR;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsCloseFile(char * vfilename, unsigned char vupdated)
+{
+    unsigned int vdirdate, vdirtime;
+    unsigned char ds1307[7], vtemp[5];
+    time_t pData;
+
+    if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
+        if (vupdated) {
+            pData = ds1307_read();
+            if (!pData.Error) 
+            {
+                vtemp[0] = BCD2UpperCh(pData.Day);
+                vtemp[1] = BCD2LowerCh(pData.Day);
+                vtemp[2] = 0;
+                ds1307[3] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Month);
+                vtemp[1] = BCD2LowerCh(pData.Month);
+                vtemp[2] = 0;
+                ds1307[4] = atoi((char*)vtemp);
+                vtemp[0] = 0x32;
+                vtemp[1] = 0x30;
+                vtemp[2] = BCD2UpperCh(pData.Year);
+                vtemp[3] = BCD2LowerCh(pData.Year);
+                vtemp[4] = 0;
+                ds1307[5] = atoi((char*)vtemp);
+
+                vtemp[0] = BCD2UpperCh(pData.Hour);
+                vtemp[1] = BCD2LowerCh(pData.Hour);
+                vtemp[2] = 0;
+                ds1307[0] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Minute);
+                vtemp[1] = BCD2LowerCh(pData.Minute);
+                vtemp[2] = 0;
+                ds1307[1] = atoi((char*)vtemp);
+                vtemp[0] = BCD2UpperCh(pData.Second);
+                vtemp[1] = BCD2LowerCh(pData.Second);
+                vtemp[2] = 0;
+                ds1307[2] = atoi((char*)vtemp);
+
+                // Converte para a Data/Hora da FAT32
+                vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
+                vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+
+                // Grava nova data no lastaccess e nova data/hora no update date/time
+                vdir->LastAccessDate  = vdirdate;
+                vdir->UpdateTime = vdirtime;
+                vdir->UpdateDate = vdirdate;
+
+                if (fsUpdateDir() != RETURN_OK)
+                    return ERRO_B_UPDATE_DIR;
+            }
+        }
+    }
+    else
+        return ERRO_B_NOT_FOUND;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsInfoFile(char * vfilename, unsigned char vtype)
+{
+    unsigned long vinfo = ERRO_D_NOT_FOUND, vtemp;
+
+    // retornar as informa?es conforme solicitado.
+    if (fsFindInDir(vfilename, TYPE_FILE) < ERRO_D_START) {
+        switch (vtype) {
+            case INFO_SIZE:
+                vinfo = vdir->Size;
+                break;
+            case INFO_CREATE:
+                vtemp = (vdir->CreateDate << 16) | vdir->CreateTime;
+                vinfo = (vtemp);
+                break;
+            case INFO_UPDATE:
+                vtemp = (vdir->UpdateDate << 16) | vdir->UpdateTime;
+                vinfo = (vtemp);
+                break;
+            case INFO_LAST:
+                vinfo = vdir->LastAccessDate;
+                break;
+        }
+    }
+    else
+        return ERRO_D_NOT_FOUND;
+
+    return vinfo;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsDelFile(char * vfilename)
+{
+    // Apaga o arquivo solicitado
+    if (fsFindInDir(vfilename, TYPE_DEL_FILE) >= ERRO_D_START)
+        return ERRO_B_APAGAR_ARQUIVO;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsRenameFile(char * vfilename, char * vnewname)
+{
+    unsigned long vclusterfile;
+    unsigned int ikk;
+    unsigned char ixx, iyy;
+
+    // Verificar se nome j?nao existe
+    vclusterfile = fsFindInDir(vnewname, TYPE_ALL);
+
+    if (vclusterfile < ERRO_D_START)
+        return ERRO_B_FILE_FOUND;
+
+    // Procura arquivo a ser renomeado
+    vclusterfile = fsFindInDir(vfilename, TYPE_FILE);
+
+    if (vclusterfile >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;
+
+    // Altera nome na estrutura vdir
+    memset(vdir->Name, 0x20, 8);
+    memset(vdir->Ext, 0x20, 3);
+
+    iyy = 0;
+    for (ixx = 0; ixx <= strlen(vnewname); ixx++) {
+        if (vnewname[ixx] == '\0')
+            break;
+        else if (vnewname[ixx] == '.')
+            iyy = 8;
+        else {
+            if (iyy <= 7)
+                vdir->Name[iyy] = vnewname[ixx];
+            else {
+                ikk = iyy - 8;
+                vdir->Ext[ikk] = vnewname[ixx];
+            }
+
+            iyy++;
+        }
+    }
+
+    // Altera o nome, as demais informacoes nao alteram
+    if (fsUpdateDir() != RETURN_OK)
+        return ERRO_B_UPDATE_DIR;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+// Rotina para escrever/ler no disco
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsRWFile(unsigned long vclusterini, unsigned long voffset, unsigned char *buffer, unsigned char vtype)
+{
+    unsigned long vdata, vclusternew, vfat;
+    unsigned int vpos, vsecfat, voffsec, voffclus, vtemp1, vtemp2, ikk;
+
+    // Calcula offset de setor e cluster
+    voffsec = voffset / vdisk->sectorSize;
+    voffclus = voffsec / vdisk->SecPerClus;
+    vclusternew = vclusterini;
+
+    // Procura o cluster onde esta o setor a ser lido
+    for (vpos = 0; vpos < voffclus; vpos++) {
+        // Em operacao de escrita, como vai mexer com disco, salva buffer no setor de swap
+        if (vtype == OPER_WRITE) {
+            ikk = vdisk->fat - 1;
+            if (!fsSectorWrite(ikk, buffer, FALSE))
+                return ERRO_B_READ_DISK;
+        }
+
+        vclusternew = fsFindNextCluster(vclusterini, NEXT_FIND);
+
+        // Se for leitura e o offset der dentro do ultimo cluster, sai
+        if (vtype == OPER_READ && vclusternew == LAST_CLUSTER_FAT32)
+            return RETURN_OK;
+
+        // Se for gravacao e o offset der dentro do ultimo cluster, cria novo cluster
+        if ((vtype == OPER_WRITE || vtype == OPER_READWRITE) && vclusternew == LAST_CLUSTER_FAT32) {
+            // Calcula novo cluster livre
+            vclusternew = fsFindClusterFree(FREE_USE);
+
+            if (vclusternew == ERRO_D_DISK_FULL)
+                return ERRO_B_DISK_FULL;
+
+            // Procura Cluster atual para altera?o
+            vsecfat = vclusterini / 128;
+            vfat = vdisk->fat + vsecfat;
+
+            if (!fsSectorRead(vfat, gDataBuffer))
+                return ERRO_B_READ_DISK;
+
+            // Grava novo cluster no cluster atual
+            vpos = (vclusterini - (128 * vsecfat)) * 4;
+            gDataBuffer[vpos] = (unsigned char)(vclusternew & 0xFF);
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x100) & 0xFF);
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x10000) & 0xFF);
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = (unsigned char)((vclusternew / 0x1000000) & 0xFF);
+
+            if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                return ERRO_B_WRITE_DISK;
+        }
+
+        vclusterini = vclusternew;
+
+        // Em operacao de escrita, como mexeu com disco, le o buffer salvo no setor swap
+        if (vtype == OPER_WRITE) {
+            ikk = vdisk->fat - 1;
+            if (!fsSectorRead(ikk, buffer))
+                return ERRO_B_READ_DISK;
+        }
+    }
+
+    // Posiciona no setor dentro do cluster para ler/gravar
+    vtemp1 = ((vclusternew - 2) * vdisk->SecPerClus);
+    #ifdef __USE_FAT32_SDDISK__
+        vtemp2 = vdisk->firsts * 2;
+    #else
+        vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+    #endif
+    vdata = vtemp1 + vtemp2;
+    vtemp1 = (voffclus * vdisk->SecPerClus);
+    vdata += voffsec - vtemp1;
+
+    if (vtype == OPER_READ || vtype == OPER_READWRITE) {
+        // Le o setor e coloca no buffer
+        if (!fsSectorRead(vdata, buffer))
+            return ERRO_B_READ_DISK;
+    }
+    else {
+        // Grava o buffer no setor
+        if (!fsSectorWrite(vdata, buffer, FALSE))
+            return ERRO_B_WRITE_DISK;
+    }
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+// Retorna um buffer de "vsize" (max 255) Bytes, a partir do "voffset".
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsReadFile(char * vfilename, unsigned long voffset, unsigned char *buffer, unsigned char vsizebuffer)
+{
+    unsigned char ix, iy, vsizebf = 0;
+    unsigned char vsize, vsetor = 0, vsizeant = 0;
+    unsigned int voffsec, vtemp, ikk, ikj;
+    unsigned long vclusterini;
+
+    vclusterini = fsFindInDir(vfilename, TYPE_FILE);
+
+    if (vclusterini >= ERRO_D_START)
+        return 0;   // Erro na abertura/Arquivo nao existe
+
+    // Verifica se o offset eh maior que o tamanho do arquivo
+    if (voffset > vdir->Size)
+        return 0;
+
+    // Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
+    vtemp = voffset / vdisk->sectorSize;
+    voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+
+    if ((voffsec + vsizebuffer) > vdisk->sectorSize)
+        vsetor = 1;
+
+    for (ix = 0; ix <= vsetor; ix++) {
+        vtemp = voffset / vdisk->sectorSize;
+        voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+
+        // Ler setor do offset
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READ) != RETURN_OK)
+            return vsizebf;
+
+        // Verifica tamanho a ser gravado
+        if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
+            vsize = vsizebuffer - vsizeant;
+        else
+            vsize = vdisk->sectorSize - voffsec;
+
+        vsizebf += vsize;
+
+        if (vsizebf > (vdir->Size - voffset))
+            vsizebf = vdir->Size - voffset;
+
+        // Retorna os dados no buffer
+        for (iy = 0; iy < vsize; iy++) {
+            ikk = vsizeant + iy;
+            ikj = voffsec + iy;
+            buffer[ikk] = gDataBuffer[ikj];
+        }
+
+        vsizeant = vsize;
+        voffset += vsize;
+    }
+
+    return vsizebf;
+}
+
+//-------------------------------------------------------------------------
+// buffer a ser gravado nao pode ter mais que 128 bytes
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsWriteFile(char * vfilename, unsigned long voffset, unsigned char *buffer, unsigned char vsizebuffer)
+{
+    unsigned char vsetor = 0, ix, iy;
+    unsigned int vsize, vsizeant = 0;
+    unsigned int voffsec, vtemp, ikk, ikj;
+    unsigned long vclusterini;
+
+    vclusterini = fsFindInDir(vfilename, TYPE_FILE);
+
+    if (vclusterini >= ERRO_D_START)
+        return ERRO_B_FILE_NOT_FOUND;   // Erro na abertura/Arquivo nao existe
+
+    // Verifica se offset vai precisar gravar mais de 1 setor (entre 2 setores)
+    vtemp = voffset / vdisk->sectorSize;
+    voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+
+    if ((voffsec + vsizebuffer) > vdisk->sectorSize)
+        vsetor = 1;
+
+    for (ix = 0; ix <= vsetor; ix++) {
+        vtemp = voffset / vdisk->sectorSize;
+        voffsec = (voffset - (vdisk->sectorSize * (vtemp)));
+
+        // Ler setor do offset
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_READWRITE) != RETURN_OK)
+            return ERRO_B_READ_FILE;
+
+        // Verifica tamanho a ser gravado
+        if ((voffsec + vsizebuffer) <= vdisk->sectorSize)
+            vsize = vsizebuffer - vsizeant;
+        else
+            vsize = vdisk->sectorSize - voffsec;
+
+        // Prepara buffer para grava?o
+        for (iy = 0; iy < vsize; iy++) {
+            ikk = iy + voffsec;
+            ikj = vsizeant + iy;
+            gDataBuffer[ikk] = buffer[ikj];
+        }
+
+        // Grava setor
+        if (fsRWFile(vclusterini, voffset, gDataBuffer, OPER_WRITE) != RETURN_OK)
+            return ERRO_B_WRITE_FILE;
+
+        vsizeant = vsize;
+
+        if (vsetor == 1)
+            voffset += vsize;
+    }
+
+    if ((voffset + vsizebuffer) > vdir->Size) {
+        vdir->Size = voffset + vsizebuffer;
+
+        if (fsUpdateDir() != RETURN_OK)
+            return ERRO_B_UPDATE_DIR;
+    }
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsMakeDir(char * vdirname)
+{
+    // Verifica ja existe arquivo/dir com esse nome
+    if (fsFindInDir(vdirname, TYPE_ALL) < ERRO_D_START)
+        return ERRO_B_DIR_FOUND;
+
+    // Cria o dir solicitado
+    if (fsFindInDir(vdirname, TYPE_CREATE_DIR) >= ERRO_D_START)
+        return ERRO_B_CREATE_DIR;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsChangeDir(char * vdirname)
+{
+    unsigned long vclusterdirnew;
+
+    // Troca o diretorio conforme especificado
+    if (vdirname[0] == '/')
+        vclusterdirnew = 0x00000002;
+    else
+        vclusterdirnew  = fsFindInDir(vdirname, TYPE_DIRECTORY);
+
+    if (vclusterdirnew >= ERRO_D_START)
+        return ERRO_B_DIR_NOT_FOUND;
+
+    // Coloca o novo diretorio como atual
+    vclusterdir = vclusterdirnew;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsRemoveDir(char * vdirname)
+{
+    // Apaga o diretorio conforme especificado
+    if (fsFindInDir(vdirname, TYPE_DEL_DIR) >= ERRO_D_START)
+        return ERRO_B_DIR_NOT_FOUND;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsPwdDir(unsigned char *vdirpath) {
+    if (vclusterdir == vdisk->root) {
+        vdirpath[0] = '/';
+        vdirpath[1] = '\0';
+    }
+    else {
+        vdirpath[0] = 'o';
+        vdirpath[1] = '\0';
+    }
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsFindInDir(char * vname, unsigned char vtype)
+{
+    unsigned long vfat, vdata, vclusterfile, vclusterdirnew, vclusteratual, vtemp1, vtemp2;
+    unsigned char fnameName[9], fnameExt[4];
+    unsigned int ix, iy, iz, vpos, vsecfat, ventrydir;
+    unsigned int vdirdate, vdirtime, ikk, ikj, vtemp;
+    unsigned char vcomp, iw, ds1307[7], iww, vtempt[5];
+    time_t pData;
+
+    memset(fnameName, 0x20, 8);
+    memset(fnameExt, 0x20, 3);
+
+    if (vname != NULL) {
+        if (vname[0] == '.' && vname[1] == '.') {
+            fnameName[0] = vname[0];
+            fnameName[1] = vname[1];
+        }
+        else if (vname[0] == '.') {
+            fnameName[0] = vname[0];
+        }
+        else {
+            iy = 0;
+            for (ix = 0; ix <= strlen(vname); ix++) {
+                if (vname[ix] == '\0')
+                    break;
+                else if (vname[ix] == '.')
+                    iy = 8;
+                else {
+                    for (iww = 0; iww <= 56; iww++) {
+                        if (strValidChars[iww] == vname[ix])
+                            break;
+                    }
+
+                    if (iww > 56)
+                        return ERRO_D_INVALID_NAME;
+
+                    if (iy <= 7)
+                        fnameName[iy] = vname[ix];
+                    else {
+                        ikk = iy - 8;
+                        fnameExt[ikk] = vname[ix];
+                    }
+
+                    iy++;
+                }
+            }
+        }
+    }
+
+    vfat = vdisk->fat;
+    vtemp1 = ((vclusterdir - 2) * vdisk->SecPerClus);
+
+    #ifdef __USE_FAT32_SDDISK__
+        vtemp2 = vdisk->firsts * 2;
+    #else
+        vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+    #endif
+
+    vdata = vtemp1 + vtemp2;
+    vclusterfile = ERRO_D_NOT_FOUND;
+    vclusterdirnew = vclusterdir;
+    ventrydir = 0;
+
+    while (vdata != LAST_CLUSTER_FAT32) {
+        for (iw = 0; iw < vdisk->SecPerClus; iw++) {
+
+            if (!fsSectorRead(vdata, gDataBuffer))
+                return ERRO_D_READ_DISK;
+
+            for (ix = 0; ix < vdisk->sectorSize; ix += 32) {
+                for (iy = 0; iy < 8; iy++) {
+                    ikk = ix + iy;
+                    vdir->Name[iy] = gDataBuffer[ikk];
+                }
+
+                for (iy = 0; iy < 3; iy++) {
+                    ikk = ix + 8 + iy;
+                    vdir->Ext[iy] = gDataBuffer[ikk];
+                }
+
+                ikk = ix + 11;
+                vdir->Attr = gDataBuffer[ikk];
+
+                ikk = ix + 15;
+                vdir->CreateTime  = (unsigned int)gDataBuffer[ikk] << 8;
+                ikk = ix + 14;
+                vdir->CreateTime |= (unsigned int)gDataBuffer[ikk];
+
+                ikk = ix + 17;
+                vdir->CreateDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                ikk = ix + 16;
+                vdir->CreateDate |= (unsigned int)gDataBuffer[ikk];
+
+                ikk = ix + 19;
+                vdir->LastAccessDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                ikk = ix + 18;
+                vdir->LastAccessDate |= (unsigned int)gDataBuffer[ikk];
+
+                ikk = ix + 23;
+                vdir->UpdateTime  = (unsigned int)gDataBuffer[ikk] << 8;
+                ikk = ix + 22;
+                vdir->UpdateTime |= (unsigned int)gDataBuffer[ikk];
+
+                ikk = ix + 25;
+                vdir->UpdateDate  = (unsigned int)gDataBuffer[ikk] << 8;
+                ikk = ix + 24;
+                vdir->UpdateDate |= (unsigned int)gDataBuffer[ikk];
+
+                ikk = ix + 21;
+                vdir->FirstCluster  = (unsigned long)gDataBuffer[ikk] << 24;
+                ikk = ix + 20;
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 16;
+                ikk = ix + 27;
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk] << 8;
+                ikk = ix + 26;
+                vdir->FirstCluster |= (unsigned long)gDataBuffer[ikk];
+
+                ikk = ix + 31;
+                vdir->Size  = (unsigned long)gDataBuffer[ikk] << 24;
+                ikk = ix + 30;
+                vdir->Size |= (unsigned long)gDataBuffer[ikk] << 16;
+                ikk = ix + 29;
+                vdir->Size |= (unsigned long)gDataBuffer[ikk] << 8;
+                ikk = ix + 28;
+                vdir->Size |= (unsigned long)gDataBuffer[ikk];
+
+                vdir->DirClusSec = vdata;
+                vdir->DirEntry = ix;
+
+                if (vtype == TYPE_FIRST_ENTRY) 
+                {
+                    if (vdir->Name[0] != DIR_DEL) 
+                    {
+                        if (vdir->Name[0] != DIR_EMPTY) 
+                        {
+                            if (vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM)
+                            {
+                                vclusterfile = vdir->FirstCluster;
+                                vdata = LAST_CLUSTER_FAT32;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
+                    if (vdir->Name[0] == DIR_EMPTY || vdir->Name[0] == DIR_DEL) {
+                        vclusterfile = ventrydir;
+
+                        if (vtype != TYPE_EMPTY_ENTRY) {
+                            vclusterfile = fsFindClusterFree(FREE_USE);
+
+                            if (vclusterfile >= ERRO_D_START)
+                                return ERRO_D_NOT_FOUND;
+
+                            if (!fsSectorRead(vdata, gDataBuffer))
+                                return ERRO_D_READ_DISK;
+
+                            for (iz = 0; iz <= 10; iz++) {
+                                if (iz <= 7) {
+                                    ikk = ix + iz;
+                                    gDataBuffer[ikk] = fnameName[iz];
+                                }
+                                else {
+                                    ikk = ix + iz;
+                                    ikj = iz - 8;
+                                    gDataBuffer[ikk] = fnameExt[ikj];
+                                }
+                            }
+
+                            if (vtype == TYPE_CREATE_FILE)
+                                gDataBuffer[ix + 11] = 0x00;
+                            else
+                                gDataBuffer[ix + 11] = ATTR_DIRECTORY;
+
+                            pData = ds1307_read();
+                            if (!pData.Error) 
+                            {
+                                vtempt[0] = BCD2UpperCh(pData.Day);
+                                vtempt[1] = BCD2LowerCh(pData.Day);
+                                vtempt[2] = 0;
+                                ds1307[3] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Month);
+                                vtempt[1] = BCD2LowerCh(pData.Month);
+                                vtempt[2] = 0;
+                                ds1307[4] = atoi((char*)vtempt);
+                                vtempt[0] = 0x32;
+                                vtempt[1] = 0x30;
+                                vtempt[2] = BCD2UpperCh(pData.Year);
+                                vtempt[3] = BCD2LowerCh(pData.Year);
+                                vtempt[4] = 0;
+                                ds1307[5] = atoi((char*)vtempt);
+
+                                vtempt[0] = BCD2UpperCh(pData.Hour);
+                                vtempt[1] = BCD2LowerCh(pData.Hour);
+                                vtempt[2] = 0;
+                                ds1307[0] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Minute);
+                                vtempt[1] = BCD2LowerCh(pData.Minute);
+                                vtempt[2] = 0;
+                                ds1307[1] = atoi((char*)vtempt);
+                                vtempt[0] = BCD2UpperCh(pData.Second);
+                                vtempt[1] = BCD2LowerCh(pData.Second);
+                                vtempt[2] = 0;
+                                ds1307[2] = atoi((char*)vtempt);
+                            }
+
+                            // Converte para a Data/Hora da FAT32
+                            vdirtime = datetimetodir(ds1307[0], ds1307[1], ds1307[2], CONV_HORA);
+                            vdirdate = datetimetodir(ds1307[3], ds1307[4], ds1307[5], CONV_DATA);
+
+                            // Coloca dados no buffer para gravacao
+                            ikk = ix + 12;
+                            gDataBuffer[ikk] = 0x00;    // case
+                            ikk = ix + 13;
+                            gDataBuffer[ikk] = 0x00;    // creation time in ms
+                            ikk = ix + 14;
+                            gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);    // creation time (ds1307)
+                            ikk = ix + 15;
+                            gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                            ikk = ix + 16;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // creation date (ds1307)
+                            ikk = ix + 17;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                            ikk = ix + 18;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // last access  (ds1307)
+                            ikk = ix + 19;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                            ikk = ix + 22;
+                            gDataBuffer[ikk] = (unsigned char)(vdirtime & 0xFF);    // time update (ds1307)
+                            ikk = ix + 23;
+                            gDataBuffer[ikk] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                            ikk = ix + 24;
+                            gDataBuffer[ikk] = (unsigned char)(vdirdate & 0xFF);    // date update (ds1307)
+                            ikk = ix + 25;
+                            gDataBuffer[ikk] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                            ikk = ix + 26;
+                            gDataBuffer[ikk] = (unsigned char)(vclusterfile & 0xFF);
+                            ikk = ix + 27;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
+                            ikk = ix + 20;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
+                            ikk = ix + 21;
+                            gDataBuffer[ikk] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
+
+                            ikk = ix + 28;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 29;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 30;
+                            gDataBuffer[ikk] = 0x00;
+                            ikk = ix + 31;
+                            gDataBuffer[ikk] = 0x00;
+
+                            if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                return ERRO_D_WRITE_DISK;
+
+                            if (vtype == TYPE_CREATE_DIR) {
+                                // Posicionar na nova posicao do diretorio
+                                vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
+                                #ifdef __USE_FAT32_SDDISK__
+                                    vtemp2 = vdisk->firsts * 2;
+                                #else
+                                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #endif
+                                vdata = vtemp1 + vtemp2;
+
+                                // Limpar novo cluster do diretorio (Zerar)
+                                memset(gDataBuffer, 0x00, vdisk->sectorSize);
+
+                                for (iz = 0; iz < vdisk->SecPerClus; iz++) {
+                                    if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                        return ERRO_D_WRITE_DISK;
+                                    vdata++;
+                                }
+
+                                vtemp1 = ((vclusterfile - 2) * vdisk->SecPerClus);
+                                #ifdef __USE_FAT32_SDDISK__
+                                    vtemp2 = vdisk->firsts * 2;
+                                #else
+                                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                                #endif
+                                vdata = vtemp1 + vtemp2;
+
+                                // Criar diretorio . (atual)
+                                memset(gDataBuffer, 0x00, vdisk->sectorSize);
+
+                                ix = 0;
+                                gDataBuffer[0] = '.';
+                                gDataBuffer[1] = 0x20;
+                                gDataBuffer[2] = 0x20;
+                                gDataBuffer[3] = 0x20;
+                                gDataBuffer[4] = 0x20;
+                                gDataBuffer[5] = 0x20;
+                                gDataBuffer[6] = 0x20;
+                                gDataBuffer[7] = 0x20;
+                                gDataBuffer[8] = 0x20;
+                                gDataBuffer[9] = 0x20;
+                                gDataBuffer[10] = 0x20;
+
+                                gDataBuffer[11] = 0x10;
+
+                                gDataBuffer[12] = 0x00; // case
+                                gDataBuffer[13] = 0x00; // creation time in ms
+                                gDataBuffer[14] = (unsigned char)(vdirtime & 0xFF); // creation time (ds1307)
+                                gDataBuffer[15] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[16] = (unsigned char)(vdirdate & 0xFF); // creation date (ds1307)
+                                gDataBuffer[17] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[18] = (unsigned char)(vdirdate & 0xFF); // last access  (ds1307)
+                                gDataBuffer[19] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                                gDataBuffer[22] = (unsigned char)(vdirtime & 0xFF); // time update (ds1307)
+                                gDataBuffer[23] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[24] = (unsigned char)(vdirdate & 0xFF); // date update (ds1307)
+                                gDataBuffer[25] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                                gDataBuffer[26] = (unsigned char)(vclusterfile & 0xFF);
+                                gDataBuffer[27] = (unsigned char)((vclusterfile / 0x100) & 0xFF);
+                                gDataBuffer[20] = (unsigned char)((vclusterfile / 0x10000) & 0xFF);
+                                gDataBuffer[21] = (unsigned char)((vclusterfile / 0x1000000) & 0xFF);
+
+                                gDataBuffer[28] = 0x00;
+                                gDataBuffer[29] = 0x00;
+                                gDataBuffer[30] = 0x00;
+                                gDataBuffer[31] = 0x00;
+
+                                // Criar diretorio .. (anterior)
+                                ix = 32;
+                                gDataBuffer[32] = '.';
+                                gDataBuffer[33] = '.';
+                                gDataBuffer[34] = 0x20;
+                                gDataBuffer[35] = 0x20;
+                                gDataBuffer[36] = 0x20;
+                                gDataBuffer[37] = 0x20;
+                                gDataBuffer[38] = 0x20;
+                                gDataBuffer[39] = 0x20;
+                                gDataBuffer[40] = 0x20;
+                                gDataBuffer[41] = 0x20;
+                                gDataBuffer[42] = 0x20;
+
+                                gDataBuffer[43] = 0x10;
+
+                                gDataBuffer[44] = 0x00; // case
+                                gDataBuffer[45] = 0x00; // creation time in ms
+                                gDataBuffer[46] = (unsigned char)(vdirtime & 0xFF); // creation time (ds1307)
+                                gDataBuffer[47] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[48] = (unsigned char)(vdirdate & 0xFF); // creation date (ds1307)
+                                gDataBuffer[49] = (unsigned char)((vdirdate >> 8) & 0xFF);
+                                gDataBuffer[50] = (unsigned char)(vdirdate & 0xFF); // last access  (ds1307)
+                                gDataBuffer[51] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                                gDataBuffer[54] = (unsigned char)(vdirtime & 0xFF); // time update (ds1307)
+                                gDataBuffer[55] = (unsigned char)((vdirtime >> 8) & 0xFF);
+                                gDataBuffer[56] = (unsigned char)(vdirdate & 0xFF); // date update (ds1307)
+                                gDataBuffer[57] = (unsigned char)((vdirdate >> 8) & 0xFF);
+
+                                gDataBuffer[58] = (unsigned char)(vclusterdir & 0xFF);
+                                gDataBuffer[59] = (unsigned char)((vclusterdir / 0x100) & 0xFF);
+                                gDataBuffer[52] = (unsigned char)((vclusterdir / 0x10000) & 0xFF);
+                                gDataBuffer[53] = (unsigned char)((vclusterdir / 0x1000000) & 0xFF);
+
+                                gDataBuffer[60] = 0x00;
+                                gDataBuffer[61] = 0x00;
+                                gDataBuffer[62] = 0x00;
+                                gDataBuffer[63] = 0x00;
+
+                                if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                    return ERRO_D_WRITE_DISK;
+                            }
+
+                            vdata = LAST_CLUSTER_FAT32;
+                            break;
+                        }
+
+                        vdata = LAST_CLUSTER_FAT32;
+                        break;
+                    }
+                }
+                else if (vtype != TYPE_FIRST_ENTRY) {
+                    if (vdir->Name[0] != DIR_EMPTY && vdir->Name[0] != DIR_DEL && vdir->Attr != ATTR_LONG_NAME && vdir->Attr != ATTR_DIR_SYSTEM) {
+                        vcomp = 1;
+                        for (iz = 0; iz <= 10; iz++) {
+                            if (iz <= 7) {
+                                if (fnameName[iz] != vdir->Name[iz]) {
+                                    vcomp = 0;
+                                    break;
+                                }
+                            }
+                            else {
+                                ikk = iz - 8;
+                                if (fnameExt[ikk] != vdir->Ext[ikk]) {
+                                    vcomp = 0;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (vcomp) {
+                            if (vtype == TYPE_ALL || (vtype == TYPE_FILE && vdir->Attr != ATTR_DIRECTORY) || (vtype == TYPE_DIRECTORY && vdir->Attr == ATTR_DIRECTORY)) {
+                                vclusterfile = vdir->FirstCluster;
+                                break;
+                            }
+                            else if (vtype == TYPE_NEXT_ENTRY) {
+                                vtype = TYPE_FIRST_ENTRY;
+                            }
+                            else if (vtype == TYPE_DEL_FILE || vtype == TYPE_DEL_DIR) {
+                                // Guardando Cluster Atual
+                                vclusteratual = vdir->FirstCluster;
+
+                                // Apagando no Diretorio
+                                gDataBuffer[ix] = DIR_DEL;
+                                ikk = ix + 26;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 27;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 20;
+                                gDataBuffer[ikk] = 0x00;
+                                ikk = ix + 21;
+                                gDataBuffer[ikk] = 0x00;
+
+                                if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                    return ERRO_D_WRITE_DISK;
+
+                                // Apagando vestigios na FAT
+                                while (1) {
+                                    // Procura Proximo Cluster e ja zera
+                                    vclusterdirnew = fsFindNextCluster(vclusteratual, NEXT_FREE);
+
+                                    if (vclusterdirnew >= ERRO_D_START)
+                                        return ERRO_D_NOT_FOUND;
+
+                                    if (vclusterdirnew == LAST_CLUSTER_FAT32) {
+                                        vclusterfile = LAST_CLUSTER_FAT32;
+                                        vdata = LAST_CLUSTER_FAT32;
+                                        break;
+                                    }
+
+                                    // Tornar cluster atual o proximo
+                                    vclusteratual = vclusterdirnew;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (vdir->Name[0] == DIR_EMPTY) {
+                    vdata = LAST_CLUSTER_FAT32;
+                    break;
+                }
+            }
+
+            if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
+                break;
+
+            ventrydir++;
+            vdata++;
+        }
+
+        // Se conseguiu concluir a operacao solicitada, sai do loop
+        if (vclusterfile < ERRO_D_START || vdata == LAST_CLUSTER_FAT32)
+            break;
+        else {
+            // Posiciona na FAT, o endereco da pasta atual
+            vsecfat = vclusterdirnew / 128;
+            vfat = vdisk->fat + vsecfat;
+
+            if (!fsSectorRead(vfat, gDataBuffer))
+                return ERRO_D_READ_DISK;
+
+            vtemp = vclusterdirnew - (128 * vsecfat);
+            vpos = vtemp * 4;
+            ikk = vpos + 3;
+            vclusterdirnew  = (unsigned long)gDataBuffer[ikk] << 24;
+            ikk = vpos + 2;
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 16;
+            ikk = vpos + 1;
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk] << 8;
+            ikk = vpos;
+            vclusterdirnew |= (unsigned long)gDataBuffer[ikk];
+
+            if (vclusterdirnew != LAST_CLUSTER_FAT32) {
+                // Devolve a proxima posicao para procura/uso
+                vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+                #ifdef __USE_FAT32_SDDISK__
+                    vtemp2 = vdisk->firsts * 2;
+                #else
+                    vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                #endif
+                vdata = vtemp1 + vtemp2;
+            }
+            else {
+                // Se for para criar uma nova entrada no diretorio e nao tem mais espaco
+                // Cria uma nova entrada na Fat
+                if (vtype == TYPE_EMPTY_ENTRY || vtype == TYPE_CREATE_FILE || vtype == TYPE_CREATE_DIR) {
+                    vclusterdirnew = fsFindClusterFree(FREE_USE);
+
+                    if (vclusterdirnew < ERRO_D_START) {
+                        if (!fsSectorRead(vfat, gDataBuffer))
+                            return ERRO_D_READ_DISK;
+
+                        gDataBuffer[vpos] = (unsigned char)(vclusterdirnew & 0xFF);
+                        ikk = vpos + 1;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x100) & 0xFF);
+                        ikk = vpos + 2;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x10000) & 0xFF);
+                        ikk = vpos + 3;
+                        gDataBuffer[ikk] = (unsigned char)((vclusterdirnew / 0x1000000) & 0xFF);
+
+                        if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                            return ERRO_D_WRITE_DISK;
+
+                        // Posicionar na nova posicao do diretorio
+                        vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+                        #ifdef __USE_FAT32_SDDISK__
+                            vtemp2 = vdisk->firsts * 2;
+                        #else
+                            vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #endif
+                        vdata = vtemp1 + vtemp2;
+
+                        // Limpar novo cluster do diretorio (Zerar)
+                        memset(gDataBuffer, 0x00, vdisk->sectorSize);
+
+                        for (iz = 0; iz < vdisk->SecPerClus; iz++) {
+                            if (!fsSectorWrite(vdata, gDataBuffer, FALSE))
+                                return ERRO_D_WRITE_DISK;
+                            vdata++;
+                        }
+
+                        vtemp1 = ((vclusterdirnew - 2) * vdisk->SecPerClus);
+                        #ifdef __USE_FAT32_SDDISK__
+                            vtemp2 = vdisk->firsts * 2;
+                        #else
+                            vtemp2 = (vdisk->reserv + vdisk->firsts + (2 * vdisk->fatsize));
+                        #endif
+                        vdata = vtemp1 + vtemp2;
+                    }
+                    else {
+                        vclusterdirnew = LAST_CLUSTER_FAT32;
+                        vclusterfile = ERRO_D_NOT_FOUND;
+                        vdata = vclusterdirnew;
+                    }
+                }
+                else {
+                    vdata = vclusterdirnew;
+                }
+            }
+        }
+    }
+
+    return vclusterfile;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsUpdateDir()
+{
+    unsigned char iy;
+    unsigned int ventry, ikk;
+
+    if (!fsSectorRead(vdir->DirClusSec, gDataBuffer))
+        return ERRO_B_READ_DISK;
+
+    ventry = vdir->DirEntry;
+
+    for (iy = 0; iy < 8; iy++) {
+        ikk = ventry + iy;
+        gDataBuffer[ikk] = vdir->Name[iy];
+    }
+
+    for (iy = 0; iy < 3; iy++) {
+        ikk = ventry + 8 + iy;
+        gDataBuffer[ikk] = vdir->Ext[iy];
+    }
+
+    ikk = ventry + 18;
+    gDataBuffer[ikk] = (unsigned char)(vdir->LastAccessDate & 0xFF);    // last access  (ds1307)
+    ikk = ventry + 19;
+    gDataBuffer[ikk] = (unsigned char)((vdir->LastAccessDate / 0x100) & 0xFF);
+
+    ikk = ventry + 22;
+    gDataBuffer[ikk] = (unsigned char)(vdir->UpdateTime & 0xFF);    // time update (ds1307)
+    ikk = ventry + 23;
+    gDataBuffer[ikk] = (unsigned char)((vdir->UpdateTime / 0x100) & 0xFF);
+
+    ikk = ventry + 24;
+    gDataBuffer[ikk] = (unsigned char)(vdir->UpdateDate & 0xFF);    // date update (ds1307)
+    ikk = ventry + 25;
+    gDataBuffer[ikk] = (unsigned char)((vdir->UpdateDate / 0x100) & 0xFF);
+
+    ikk = ventry + 28;
+    gDataBuffer[ikk] = (unsigned char)(vdir->Size & 0xFF);
+    ikk = ventry + 29;
+    gDataBuffer[ikk] = (unsigned char)((vdir->Size / 0x100) & 0xFF);
+    ikk = ventry + 30;
+    gDataBuffer[ikk] = (unsigned char)((vdir->Size / 0x10000) & 0xFF);
+    ikk = ventry + 31;
+    gDataBuffer[ikk] = (unsigned char)((vdir->Size / 0x1000000) & 0xFF);
+
+    if (!fsSectorWrite(vdir->DirClusSec, gDataBuffer, FALSE))
+        return ERRO_B_WRITE_DISK;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsFindNextCluster(unsigned long vclusteratual, unsigned char vtype)
+{
+    unsigned long vfat, vclusternew;
+    unsigned int vpos, vsecfat, ikk;
+
+    vsecfat = vclusteratual / 128;
+    vfat = vdisk->fat + vsecfat;
+
+    if (!fsSectorRead(vfat, gDataBuffer))
+        return ERRO_D_READ_DISK;
+
+    vpos = (vclusteratual - (128 * vsecfat)) * 4;
+    ikk = vpos + 3;
+    vclusternew  = (unsigned long)gDataBuffer[ikk] << 24;
+    ikk = vpos + 2;
+    vclusternew |= (unsigned long)gDataBuffer[ikk] << 16;
+    ikk = vpos + 1;
+    vclusternew |= (unsigned long)gDataBuffer[ikk] << 8;
+    vclusternew |= (unsigned long)gDataBuffer[vpos];
+
+    if (vtype != NEXT_FIND) {
+        if (vtype == NEXT_FREE) {
+            gDataBuffer[vpos] = 0x00;
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = 0x00;
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = 0x00;
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = 0x00;
+        }
+        else if (vtype == NEXT_FULL) {
+            gDataBuffer[vpos] = 0xFF;
+            ikk = vpos + 1;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = vpos + 2;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = vpos + 3;
+            gDataBuffer[ikk] = 0x0F;
+        }
+
+        if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+            return ERRO_D_WRITE_DISK;
+    }
+
+  return vclusternew;
+}
+
+//-------------------------------------------------------------------------
+unsigned long CFat32::fsFindClusterFree(unsigned char vtype)
+{
+    unsigned long vclusterfree = 0x00, cc, vfat;
+    unsigned int jj, ikk, ikk2, ikk3;
+
+    vfat = vdisk->fat;
+
+    for (cc = 0; cc <= vdisk->fatsize; cc++) {
+        // LER FAT SECTOR
+        if (!fsSectorRead(vfat, gDataBuffer))
+            return ERRO_D_READ_DISK;
+
+        // Procura Cluster Livre dentro desse setor
+        for (jj = 0; jj < vdisk->sectorSize; jj += 4) {
+            ikk = jj + 1;
+            ikk2 = jj + 2;
+            ikk3 = jj + 3;
+            if (gDataBuffer[jj] == 0x00 && gDataBuffer[ikk] == 0x00 && gDataBuffer[ikk2] == 0x00 && gDataBuffer[ikk3] == 0x00)
+                break;
+
+            vclusterfree++;
+        }
+
+        // Se achou algum setor livre, sai do loop
+        if (jj < vdisk->sectorSize)
+            break;
+
+        // Soma mais 1 para procurar proximo cluster
+        vfat++;
+    }
+
+    if (cc > vdisk->fatsize)
+        vclusterfree = ERRO_D_DISK_FULL;
+    else {
+        if (vtype == FREE_USE) {
+            gDataBuffer[jj] = 0xFF;
+            ikk = jj + 1;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = jj + 2;
+            gDataBuffer[ikk] = 0xFF;
+            ikk = jj + 3;
+            gDataBuffer[ikk] = 0x0F;
+
+            if (!fsSectorWrite(vfat, gDataBuffer, FALSE))
+                return ERRO_D_WRITE_DISK;
+        }
+    }
+
+    return (vclusterfree);
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsFormat (long int serialNumber, char * volumeID)
+{
+    unsigned int    j;
+    unsigned long   secCount;
+    unsigned long   root, fat, firsts, fatsize;
+    unsigned long   Index;
+    unsigned char    SecPerClus;
+
+    unsigned char *  dataBufferPointer = (unsigned char*)gDataBuffer;
+
+    // Ler MBR
+    if (!fsSectorRead(0x00, gDataBuffer))
+        return ERRO_B_READ_DISK;
+
+    secCount  = (unsigned long)gDataBuffer[461] << 24;
+    secCount |= (unsigned long)gDataBuffer[460] << 16;
+    secCount |= (unsigned long)gDataBuffer[459] << 8;
+    secCount |= (unsigned long)gDataBuffer[458];
+
+    firsts  = (unsigned long)gDataBuffer[457] << 24;
+    firsts |= (unsigned long)gDataBuffer[456] << 16;
+    firsts |= (unsigned long)gDataBuffer[455] << 8;
+    firsts |= (unsigned long)gDataBuffer[454];
+
+    *(dataBufferPointer + 450) = 0x0B;
+
+    if (!fsSectorWrite (0x00, gDataBuffer, TRUE))
+        return ERRO_B_WRITE_DISK;
+
+    //-------------------
+
+    if (secCount >= 0x000EEB7F && secCount <= 0x01000000)   // 512 MB to 8 GB, 8 sectors per cluster
+        SecPerClus = 8;
+    else if (secCount > 0x01000000 && secCount <= 0x02000000) // 8 GB to 16 GB, 16 sectors per cluster
+        SecPerClus = 16;
+    else if (secCount > 0x02000000 && secCount <= 0x04000000) // 16 GB to 32 GB, 32 sectors per cluster
+        SecPerClus = 32;
+    else if (secCount > 0x04000000) // More than 32 GB, 64 sectors per cluster
+        SecPerClus = 64;
+    //-------------------
+
+    //-------------------
+    fatsize = (secCount - 0x26);
+    fatsize = (fatsize / ((256 * SecPerClus + 2) / 2));
+    fat = 0x26 + firsts;
+    root = fat + (2 * fatsize);
+    //-------------------
+
+    // Formata MicroSD
+    memset (gDataBuffer, 0x00, MEDIA_SECTOR_SIZE);
+
+    // Non-file system specific values
+    gDataBuffer[0] = 0xEB;         //Jump instruction
+    gDataBuffer[1] = 0x3C;
+    gDataBuffer[2] = 0x90;
+    gDataBuffer[3] =  'M';         //OEM Name
+    gDataBuffer[4] =  'M';
+    gDataBuffer[5] =  'S';
+    gDataBuffer[6] =  'J';
+    gDataBuffer[7] =  ' ';
+    gDataBuffer[8] =  'F';
+    gDataBuffer[9] =  'A';
+    gDataBuffer[10] = 'T';
+
+    gDataBuffer[11] = 0x00;             //Sector size
+    gDataBuffer[12] = 0x02;
+
+    gDataBuffer[13] = SecPerClus;   //Sectors per cluster
+
+    gDataBuffer[14] = 0x26;         //Reserved sector count
+    gDataBuffer[15] = 0x00;
+
+    fat = 0x26 + firsts;
+
+    gDataBuffer[16] = 0x02;         //number of FATs
+
+    gDataBuffer[17] = 0x00;          //Max number of root directory entries - 512 files allowed
+    gDataBuffer[18] = 0x00;
+
+    gDataBuffer[19] = 0x00;         //total sectors
+    gDataBuffer[20] = 0x00;
+
+    gDataBuffer[21] = 0xF8;         //Media Descriptor
+
+    gDataBuffer[22] = 0x00;         //Sectors per FAT
+    gDataBuffer[23] = 0x00;
+
+    gDataBuffer[24] = 0x3F;         //Sectors per track
+    gDataBuffer[25] = 0x00;
+
+    gDataBuffer[26] = 0xFF;         //Number of heads
+    gDataBuffer[27] = 0x00;
+
+    // Hidden sectors = sectors between the MBR and the boot sector
+    gDataBuffer[28] = (unsigned char)(firsts & 0xFF);
+    gDataBuffer[29] = (unsigned char)((firsts / 0x100) & 0xFF);
+    gDataBuffer[30] = (unsigned char)((firsts / 0x10000) & 0xFF);
+    gDataBuffer[31] = (unsigned char)((firsts / 0x1000000) & 0xFF);
+
+    // Total Sectors = same as sectors in the partition from MBR
+    gDataBuffer[32] = (unsigned char)(secCount & 0xFF);
+    gDataBuffer[33] = (unsigned char)((secCount / 0x100) & 0xFF);
+    gDataBuffer[34] = (unsigned char)((secCount / 0x10000) & 0xFF);
+    gDataBuffer[35] = (unsigned char)((secCount / 0x1000000) & 0xFF);
+
+    // Sectors per FAT
+    gDataBuffer[36] = (unsigned char)(fatsize & 0xFF);
+    gDataBuffer[37] = (unsigned char)((fatsize / 0x100) & 0xFF);
+    gDataBuffer[38] = (unsigned char)((fatsize / 0x10000) & 0xFF);
+    gDataBuffer[39] = (unsigned char)((fatsize / 0x1000000) & 0xFF);
+
+    gDataBuffer[40] = 0x00;         //Active FAT
+    gDataBuffer[41] = 0x00;
+
+    gDataBuffer[42] = 0x00;         //File System version
+    gDataBuffer[43] = 0x00;
+
+    gDataBuffer[44] = 0x02;         //First cluster of the root directory
+    gDataBuffer[45] = 0x00;
+    gDataBuffer[46] = 0x00;
+    gDataBuffer[47] = 0x00;
+
+    gDataBuffer[48] = 0x01;         //FSInfo
+    gDataBuffer[49] = 0x00;
+
+    gDataBuffer[50] = 0x00;         //Backup Boot Sector
+    gDataBuffer[51] = 0x00;
+
+    gDataBuffer[52] = 0x00;         //Reserved for future expansion
+    gDataBuffer[53] = 0x00;
+    gDataBuffer[54] = 0x00;
+    gDataBuffer[55] = 0x00;
+    gDataBuffer[56] = 0x00;
+    gDataBuffer[57] = 0x00;
+    gDataBuffer[58] = 0x00;
+    gDataBuffer[59] = 0x00;
+    gDataBuffer[60] = 0x00;
+    gDataBuffer[61] = 0x00;
+    gDataBuffer[62] = 0x00;
+    gDataBuffer[63] = 0x00;
+
+    gDataBuffer[64] = 0x00;         // Physical drive number
+
+    gDataBuffer[65] = 0x00;         // Reserved (current head)
+
+    gDataBuffer[66] = 0x29;         // Signature code
+
+    gDataBuffer[67] = (unsigned char)(serialNumber & 0xFF);
+    gDataBuffer[68] = (unsigned char)((serialNumber / 0x100) & 0xFF);
+    gDataBuffer[69] = (unsigned char)((serialNumber / 0x10000) & 0xFF);
+    gDataBuffer[70] = (unsigned char)((serialNumber / 0x1000000) & 0xFF);
+
+    // Volume ID
+    if (volumeID != NULL)
+    {
+        for (Index = 0; (*(volumeID + Index) != 0) && (Index < 11); Index++)
+        {
+            gDataBuffer[Index + 71] = *(volumeID + Index);
+        }
+        while (Index < 11)
+        {
+            gDataBuffer[71 + Index++] = 0x20;
+        }
+    }
+    else
+    {
+        for (Index = 0; Index < 11; Index++)
+        {
+            gDataBuffer[Index+71] = 0;
+        }
+    }
+
+    gDataBuffer[82] = 'F';
+    gDataBuffer[83] = 'A';
+    gDataBuffer[84] = 'T';
+    gDataBuffer[85] = '3';
+    gDataBuffer[86] = '2';
+    gDataBuffer[87] = ' ';
+    gDataBuffer[88] = ' ';
+    gDataBuffer[89] = ' ';
+
+    gDataBuffer[510] = 0x55;
+    gDataBuffer[511] = 0xAA;
+
+    if (!fsSectorWrite(firsts, gDataBuffer, FALSE))
+        return ERRO_B_WRITE_DISK;
+
+    // Erase the FAT
+    memset (gDataBuffer, 0x00, MEDIA_SECTOR_SIZE);
+
+    gDataBuffer[0] = 0xF8;          //BPB_Media byte value in its low 8 bits, and all other bits are set to 1
+    gDataBuffer[1] = 0xFF;
+    gDataBuffer[2] = 0xFF;
+    gDataBuffer[3] = 0x0F;
+
+    gDataBuffer[4] = 0xFF;          //Disk is clean and no read/write errors were encountered
+    gDataBuffer[5] = 0xFF;
+    gDataBuffer[6] = 0xFF;
+    gDataBuffer[7] = 0xFF;
+
+    gDataBuffer[8]  = 0xFF;         //Root Directory EOF
+    gDataBuffer[9]  = 0xFF;
+    gDataBuffer[10] = 0xFF;
+    gDataBuffer[11] = 0x0F;
+
+    for (j = 1; j != 0xFFFF; j--)
+    {
+        if (!fsSectorWrite (fat + (j * fatsize), gDataBuffer, FALSE))
+            return ERRO_B_WRITE_DISK;
+    }
+
+    memset (gDataBuffer, 0x00, 12);
+
+    for (Index = fat + 1; Index < (fat + fatsize); Index++)
+    {
+        for (j = 1; j != 0xFFFF; j--)
+        {
+            if (!fsSectorWrite (Index + (j * fatsize), gDataBuffer, FALSE))
+                return ERRO_B_WRITE_DISK;
+        }
+    }
+
+    // Erase the root directory
+    for (Index = 1; Index < SecPerClus; Index++)
+    {
+        if (!fsSectorWrite (root + Index, gDataBuffer, FALSE))
+            return ERRO_B_WRITE_DISK;
+    }
+
+    // Create a drive name entry in the root dir
+    Index = 0;
+    while ((*(volumeID + Index) != 0) && (Index < 11))
+    {
+        gDataBuffer[Index] = *(volumeID + Index);
+        Index++;
+    }
+    while (Index < 11)
+    {
+        gDataBuffer[Index++] = ' ';
+    }
+    gDataBuffer[11] = 0x08;
+    gDataBuffer[17] = 0x11;
+    gDataBuffer[19] = 0x11;
+    gDataBuffer[23] = 0x11;
+
+    if (!fsSectorWrite (root, gDataBuffer, FALSE))
+        return ERRO_B_WRITE_DISK;
+
+    return RETURN_OK;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsSectorRead(unsigned long vsector, unsigned char* vbuffer)
+{
+    DRESULT vstatus;
+
+    vstatus = disk_read(diskDrv, vbuffer, vsector, 1);
+
+    if (vstatus != RES_OK)
+    {
+        printf("Disk I/O Read Error (%d)\n",vstatus);
+        return 0;
+    }
+
+    return 1;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CFat32::fsSectorWrite(unsigned long vsector, unsigned char* vbuffer, unsigned char vtipo)
+{
+    DRESULT vstatus;
+    (void)(vtipo);
+
+    vstatus = disk_write(diskDrv, vbuffer, vsector, 1);
+
+    if (vstatus != RES_OK)
+    {
+        printf("Disk I/O Write Error (%d)\n",vstatus);
+        return 0;
+    }
+
+    return 1;
+}

@@ -38,9 +38,7 @@ public:
     CLogger             m_Logger;
     CDWHCIDevice        m_DWHCI;
     CScheduler          m_Scheduler;
-    #ifdef __USE_CIRCLE_BLUETOOTH__
-        CBTSubSystem        m_Bluetooth;
-    #endif
+    CBTSubSystem        m_Bluetooth;
     FATFS               m_FileSystem;
     CEMMCDevice         m_EMMC;
     CLcdTch             m_LcdTch;

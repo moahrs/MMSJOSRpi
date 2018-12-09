@@ -150,6 +150,7 @@ void CBTLogicalLayer::Process (void)
 				if (pEvent->Status == BT_STATUS_SUCCESS)
 				{
 					mBtHandleActive = 0;
+					mConnComplete = 0;
 				}
 				else
 				{

@@ -17,7 +17,6 @@
 #include <circle/actled.h>
 #include <circle/koptions.h>
 #include <circle/devicenameservice.h>
-#include <circle/screen.h>
 #include <circle/serial.h>
 #include <circle/exceptionhandler.h>
 #include <circle/interrupt.h>
@@ -30,11 +29,16 @@
 #include <circle/bcmpropertytags.h>
 #include <circle/fs/fat/fatfs.h>
 #include <circle/device.h>
-#include <drivers/lcd_vdg.h>
-#include <drivers/lcd_tch.h>
-#include <drivers/screentft.h>
-#include <../lib/circlelib/addon/SDCard/emmc.h>
-#include <../lib/circlelib/addon/fatfs/ff.h>
+
+#ifdef __USE_TFT_LCD__
+	#include <drivers/screentft.h>
+	#include <drivers/lcd_tch.h>
+#else
+	#include <circle/screen.h>
+#endif
+
+#include <SDCard/emmc.h>
+#include <fatfs/ff.h>
 #include <kernel/mmsjos.h>
 
 #endif

@@ -26,6 +26,7 @@ LIBS= $(CIRCLEHOME)/lib/usb/libusb.a \
 KER_SRC = ../src/kernel
 KER_HEAD = ../include
 CIRCLE_HEAD = $(CIRCLEHOME)/include
+CIRCLE_ADDON_HEAD = $(CIRCLEHOME)/addon
 COMMON_SRC = ../src/common
 DRIVERS_SRC = ../src/drivers
 DISK_SRC = ../src/disk
@@ -53,19 +54,19 @@ build: $(OBJECTS) $(HEADERS)
 	$(CC) -T $(CIRCLEHOME)/circle.ld -o $(IMG_NAME).elf $(LFLAGS) $(OBJECTS) $(LIBS)
 
 $(OBJ_DIR)/%.o: $(KER_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(KER_SRC)/%.S
 	$(CC) $(CFLAGS) -I$(KER_SRC) -c $< -o $@
 
 $(OBJ_DIR)/%.o: $(COMMON_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(DRIVERS_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(DISK_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(DISK_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) -I$(DISK_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
 
 clean:
 	rm -rf $(OBJ_DIR)

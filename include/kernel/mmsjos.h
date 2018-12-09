@@ -24,7 +24,7 @@
 class CMMSJOS
 {
 public:
-    CMMSJOS (CScrTft *mScrTft, CBTSubSystem *mBluetooth, CTimer *mTimer, CDWHCIDevice *mDWHCI, FATFS *mFileSystem, CEMMCDevice *mEMMC);
+    CMMSJOS (CInterruptSystem *mInterrupt, CTimer *mTimer, CDWHCIDevice *mDWHCI, FATFS *mFileSystem, CEMMCDevice *mEMMC);
     ~CMMSJOS (void);
 
 	boolean Initialize (void);
@@ -35,6 +35,7 @@ public:
 
 	unsigned char  *mcfgfile; // onde eh carregado o arquivo de configuracao e outros arquivos 12K
 
+	static CMMSJOS *Get (void);
 	void processCmd(void);
 	unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress);
 	unsigned char* vMemSystemArea = (unsigned char*)0x00700000;       // 1MB - Atualizar sempre que a compilacao passar desse valor
@@ -48,16 +49,20 @@ public:
 	                           {'O','c','t'},{'N','o','v'},{'D','e','c'}};
 
 private:
-	CScrTft *p_mScrTft;
-	#ifdef __USE_CIRCLE_BLUETOOTH__
-		CBTSubSystem *p_mBluetooth;
-	#endif
+	CBTSubSystem *p_mBluetooth;
+	CInterruptSystem * p_mInterrupt;
 	CTimer *p_mTimer;
 	CDWHCIDevice *p_mDWHCI;
 	FATFS *p_mFileSystem;
 	CEMMCDevice *p_mEMMC;
+	#ifdef __USE_TFT_LCD__
+		CScrTft *p_mOut;
+	#else
+		CScreenDevice *p_mOut;
+	#endif
 	CUSBKeyboardDevice *pKeyboard;
 
+	static char statusUartInit;
 	static CMMSJOS *s_pThis;
 	static char vkeybuffer[255];
 
