@@ -37,6 +37,7 @@ public:
 
 	static CMMSJOS *Get (void);
 	void processCmd(void);
+	void load232(void);
 	unsigned long loadFile(unsigned char *parquivo, unsigned char* xaddress);
 	unsigned char* vMemSystemArea = (unsigned char*)0x00700000;       // 1MB - Atualizar sempre que a compilacao passar desse valor
 	unsigned char* vMemUserArea = (unsigned char*)0x00800000;   // 440MB - Atualizar sempre que a compilacao passar desse valor
@@ -130,7 +131,6 @@ private:
 	void runCmd(void);
 	unsigned char loadCFG(unsigned char ptipo);
 	void catFile(unsigned char *parquivo);
-	void load232(void);
 	static void KeyPressedHandler (const char *pString);
 	static void KeyStatusHandlerRaw (unsigned char ucModifiers, const unsigned char RawKeys[6]);
 };

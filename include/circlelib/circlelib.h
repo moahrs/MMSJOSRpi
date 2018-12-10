@@ -6,11 +6,6 @@
 #define INQUIRY_FIND_DEVICES        0
 
 #define __USE_TFT_LCD__
-#define __USE_CIRCLE_BLUETOOTH__
-#define __USE_BLUETOOTH_ZERO_W__
-//#define __USE_WIFI_ZERO_W__
-//#define __USE_SERIAL_BLUETOOTH__
-//#define __USE_WIFI_ESP8266__
 
 #include <circle/usb/usbkeyboard.h>
 #include <circle/memory.h>
@@ -31,8 +26,7 @@
 #include <circle/device.h>
 
 #ifdef __USE_TFT_LCD__
-	#include <drivers/screentft.h>
-	#include <drivers/lcd_tch.h>
+	#include <ScreenTFT/screentft.h>
 #else
 	#include <circle/screen.h>
 #endif

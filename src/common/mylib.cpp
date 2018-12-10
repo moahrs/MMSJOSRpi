@@ -3,7 +3,8 @@
 #include <circle/types.h>
 
 #ifdef __USE_TFT_LCD__
-	#include <drivers/screentft.h>
+	#include <circle/interrupt.h>
+	#include <ScreenTFT/screentft.h>
 #else
 	#include <circle/screen.h>
 #endif

@@ -4,6 +4,8 @@ CC = $(PREFIX)g++
 OBJCOPY = $(PREFIX)objcopy
 
 CIRCLEHOME = ../lib/CircleLib
+BCM2835HOME = ../lib/Bcm2835Lib
+SCREENTFTHOME = ../lib/ScreenTFTLib
 
 CFLAGS= -march=armv6zk -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -fpic -ffreestanding -fno-exceptions
 CSRCFLAGS= -O2 -Wall -Wextra -fno-rtti
@@ -17,7 +19,9 @@ LIBS= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	  $(CIRCLEHOME)/lib/bt/libbluetooth.a \
 	  $(CIRCLEHOME)/lib/sched/libsched.a \
-	  $(CIRCLEHOME)/lib/libcircle.a
+	  $(CIRCLEHOME)/lib/libcircle.a \
+	  $(BCM2835HOME)/lib/libbcm2835min.a \
+	  $(SCREENTFTHOME)/lib/libscreentft.a
 #LIBS= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/input/libinput.a \
 	  $(CIRCLEHOME)/lib/libcircle.a
@@ -27,6 +31,8 @@ KER_SRC = ../src/kernel
 KER_HEAD = ../include
 CIRCLE_HEAD = $(CIRCLEHOME)/include
 CIRCLE_ADDON_HEAD = $(CIRCLEHOME)/addon
+BCM2835_HEAD = $(BCM2835HOME)/include
+SCREENTFT_HEAD = $(SCREENTFTHOME)/include
 COMMON_SRC = ../src/common
 DRIVERS_SRC = ../src/drivers
 DISK_SRC = ../src/disk
@@ -42,6 +48,7 @@ OBJECTS += $(patsubst $(COMMON_SRC)/%.cpp, $(OBJ_DIR)/%.o, $(COMMONSOURCES))
 OBJECTS += $(patsubst $(DRIVERS_SRC)/%.cpp, $(OBJ_DIR)/%.o, $(DRIVERSSOURCES))
 OBJECTS += $(patsubst $(DISK_SRC)/%.cpp, $(OBJ_DIR)/%.o, $(DISKSOURCES))
 HEADERS = $(wildcard $(KER_HEAD)/*.h)
+ALLHEADERS = -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -I$(BCM2835_HEAD) -I$(SCREENTFT_HEAD)
 
 IMG_NAME=mmsjos
 
@@ -54,19 +61,19 @@ build: $(OBJECTS) $(HEADERS)
 	$(CC) -T $(CIRCLEHOME)/circle.ld -o $(IMG_NAME).elf $(LFLAGS) $(OBJECTS) $(LIBS)
 
 $(OBJ_DIR)/%.o: $(KER_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) $(ALLHEADERS) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(KER_SRC)/%.S
 	$(CC) $(CFLAGS) -I$(KER_SRC) -c $< -o $@
 
 $(OBJ_DIR)/%.o: $(COMMON_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) $(ALLHEADERS) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(DRIVERS_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) $(ALLHEADERS) -c $< -o $@ $(CSRCFLAGS)
 
 $(OBJ_DIR)/%.o: $(DISK_SRC)/%.cpp
-	$(CC) $(CFLAGS) -I$(DISK_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) -c $< -o $@ $(CSRCFLAGS)
+	$(CC) $(CFLAGS) $(ALLHEADERS) -c $< -o $@ $(CSRCFLAGS)
 
 clean:
 	rm -rf $(OBJ_DIR)

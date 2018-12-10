@@ -31,7 +31,7 @@ static const char FromKernel[] = "kernel";
 
 CKernel::CKernel (void)
 	#ifdef __USE_TFT_LCD__
-:		m_ScrTft (&m_LcdVdg),
+:		m_ScrTft (&m_Interrupt),
 	#else
 :		m_Screen (m_Options.GetWidth (), m_Options.GetHeight ()),
 	#endif
@@ -40,7 +40,6 @@ CKernel::CKernel (void)
 	m_DWHCI (&m_Interrupt, &m_Timer),
 	m_Bluetooth (&m_Interrupt),
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
-	m_LcdTch (&m_Interrupt, &m_LcdVdg),
 	m_MMSJOS (&m_Interrupt, &m_Timer, &m_DWHCI, &m_FileSystem, &m_EMMC)
 {
 	//	m_ActLED.Blink (5);	// show we are alive
@@ -57,10 +56,11 @@ boolean CKernel::Initialize (void)
 
 	boolean bOK = TRUE;
 
-    if (bOK)
-    {
-        bOK = m_LcdVdg.Initialize ();
-    }
+	if (bOK)
+	{
+		bOK = m_Interrupt.Initialize ();
+	}
+
 	#ifdef __USE_TFT_LCD__
 	    if (bOK)
 	    {
@@ -86,12 +86,6 @@ boolean CKernel::Initialize (void)
 		#endif
 
 		bOK = m_Logger.Initialize (pTarget);
-	}
-
-	if (bOK)
-	{
-		m_Logger.Write (FromKernel, LogNotice, "Initializing Interrupts...");
-		bOK = m_Interrupt.Initialize ();
 	}
 
 	if (bOK)
@@ -134,12 +128,6 @@ boolean CKernel::Initialize (void)
 		m_Logger.Write (FromKernel, LogNotice, "Initializing USB...");
 		bOK = m_DWHCI.Initialize ();
 	}
-
-    if (bOK)
-    {
-		m_Logger.Write (FromKernel, LogNotice, "Initializing TouchScreen...");
-        bOK = m_LcdTch.Initialize ();
-    }
 
 	if (bOK)
 	{

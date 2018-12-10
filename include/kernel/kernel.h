@@ -26,14 +26,13 @@ public:
     CActLED             m_ActLED;
     CKernelOptions      m_Options;
     CDeviceNameService  m_DeviceNameService;
-    CLcdVdg             m_LcdVdg;
+    CInterruptSystem    m_Interrupt;
     #ifdef __USE_TFT_LCD__
         CScrTft             m_ScrTft;
     #else
         CScreenDevice       m_Screen;
     #endif
     CExceptionHandler   m_ExceptionHandler;
-    CInterruptSystem    m_Interrupt;
     CTimer              m_Timer;
     CLogger             m_Logger;
     CDWHCIDevice        m_DWHCI;
@@ -41,7 +40,6 @@ public:
     CBTSubSystem        m_Bluetooth;
     FATFS               m_FileSystem;
     CEMMCDevice         m_EMMC;
-    CLcdTch             m_LcdTch;
     CMMSJOS             m_MMSJOS;
 };
 
