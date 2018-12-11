@@ -52,9 +52,9 @@
 * |             |
 * |             |
 * |             |
-* |             | 1BFFFFFFh
-* +-------------+ 1C000000h
-* |             |
+* |             | 
+* +-------------+ 1BFFFFFFh
+* |             | 1C000000h
 * |             |
 * |  GPU 64MB   | 
 * |             |
@@ -233,9 +233,9 @@ void CMMSJOS::Start(void)
                 if (vbufptr > vbuf + 31)
                     vbufptr = vbuf + 31;
 
-                if (p_mOut->vcol > p_mOut->GetColumns()) {
-                    p_mOut->vlin = p_mOut->vlin + 1;
-                    p_mOut->locate(0, p_mOut->vlin, NOREPOS_CURSOR);
+                if (p_mOut->GetColumn() > p_mOut->GetColumns()) {
+                    p_mOut->SetRow(p_mOut->GetRow() + 1);
+                    p_mOut->locate(0, p_mOut->GetRow(), NOREPOS_CURSOR);
                 }
 
                 p_mOut->writec(vbytepic, ADD_POS_SCR);
@@ -244,11 +244,11 @@ void CMMSJOS::Start(void)
                 switch (vbytepic) {
                     case 0x0A:  // New Line
                     case 0x0D:  // Enter
-                        p_mOut->vlin = p_mOut->vlin + 1;
+                        p_mOut->SetRow(p_mOut->GetRow() + 1);
                         p_mOut->desativaCursor();
                         if (pKeyboard == 0)
                             p_mOut->funcKey(0,2, 0, 0, 50, 0);
-                        p_mOut->locate(0, p_mOut->vlin, NOREPOS_CURSOR);
+                        p_mOut->locate(0, p_mOut->GetRow(), NOREPOS_CURSOR);
                         *vbufptr = 0x00;
                         processCmd();
                         putPrompt(noaddline);
@@ -259,17 +259,17 @@ void CMMSJOS::Start(void)
                         break;
                     case 0x7F:  // USB Keyboard BackSpace
                     case 0x08:  // Touch Keyboard BackSpace
-                        if (p_mOut->vcol > vinip) {
+                        if (p_mOut->GetColumn() > vinip) {
                             *vbufptr = '\0';
                             vbufptr--;
                             if (vbufptr < vbuf)
                                 vbufptr = vbuf;
                             *vbufptr = '\0';
-                            p_mOut->vcol = p_mOut->vcol - 1;
-                            p_mOut->locate(p_mOut->vcol,p_mOut->vlin, NOREPOS_CURSOR);
+                            p_mOut->SetColumn(p_mOut->GetColumn() - 1);
+                            p_mOut->locate(p_mOut->GetColumn(),p_mOut->GetRow(), NOREPOS_CURSOR);
                             p_mOut->writec(0x08, ADD_POS_SCR);
-                            p_mOut->vcol = p_mOut->vcol - 1;
-                            p_mOut->locate(p_mOut->vcol,p_mOut->vlin, NOREPOS_CURSOR);
+                            p_mOut->SetColumn(p_mOut->GetColumn() - 1);
+                            p_mOut->locate(p_mOut->GetColumn(),p_mOut->GetRow(), NOREPOS_CURSOR);
                         }
                         break;
                 }
@@ -773,13 +773,13 @@ void CMMSJOS::processCmd(void)
 //-----------------------------------------------------------------------------
 void CMMSJOS::putPrompt(unsigned int plinadd) {
     if (plinadd)
-        p_mOut->vlin = p_mOut->vlin + 1;
+        p_mOut->SetRow(p_mOut->GetRow() + 1);
 
-    p_mOut->locate(0,p_mOut->vlin, NOREPOS_CURSOR);
+    p_mOut->locate(0,p_mOut->GetRow(), NOREPOS_CURSOR);
 
     printf("#%s>",vdiratu);
 
-    vinip = p_mOut->vcol;
+    vinip = p_mOut->GetColumn();
 
     p_mOut->ativaCursor();
 }
@@ -847,11 +847,11 @@ unsigned char CMMSJOS::loadCFG(unsigned char ptipo) {
 
                 if (!strcmp((char*)vset,"FCOLOR") && vigual == 6) {
                     vval = atoi((char*)vparam);
-                    p_mOut->vcorf = vval;
+                    p_mOut->SetColorForeground(vval);
                 }
                 else if (!strcmp((char*)vset,"BCOLOR") && vigual == 6) {
                     vval = atoi((char*)vparam);
-                    p_mOut->vcorb = vval;
+                    p_mOut->SetColorBackground(vval);
                 }
                 else if (!strcmp((char*)vset,"PATH") && vigual == 4) {
                     // futurinho
@@ -949,7 +949,7 @@ void CMMSJOS::load232(void)
         {
             printf("Receiving File %s\n",pFileName);
 
-            vOldLin = p_mOut->vlin;
+            vOldLin = p_mOut->GetRow();
             pCount = 0;
 
             while(1)
@@ -1050,12 +1050,12 @@ void CMMSJOS::catFile(unsigned char *parquivo)
         {
             if (*mcfgfileptr == 0x0D) 
             {
-                p_mOut->locate(0, p_mOut->vlin, NOREPOS_CURSOR);
+                p_mOut->locate(0, p_mOut->GetRow(), NOREPOS_CURSOR);
             }
             else if (*mcfgfileptr == 0x0A) 
             {
-                p_mOut->vlin = p_mOut->vlin + 1;
-                p_mOut->locate(p_mOut->vcol, p_mOut->vlin, NOREPOS_CURSOR);
+                p_mOut->SetRow(p_mOut->GetRow() + 1);
+                p_mOut->locate(p_mOut->GetColumn(), p_mOut->GetRow(), NOREPOS_CURSOR);
             }
             else if (*mcfgfileptr == 0x1A || *mcfgfileptr == 0x00) 
             {
