@@ -53,7 +53,7 @@ ALLHEADERS = -I$(KER_SRC) -I$(KER_HEAD) -I$(CIRCLE_HEAD) -I$(CIRCLE_ADDON_HEAD) 
 IMG_NAME=mmsjos
 
 build-hardware: build
-	$(PREFIX)objdump -D $(IMG_NAME).elf > $(IMG_NAME).lst
+#	$(PREFIX)objdump -D $(IMG_NAME).elf > $(IMG_NAME).lst
 	$(OBJCOPY) $(IMG_NAME).elf -O binary kernel.img
 
 build: $(OBJECTS) $(HEADERS)

@@ -67,7 +67,7 @@ private:
 	static CMMSJOS *s_pThis;
 	static char vkeybuffer[255];
 
-	unsigned char* pVersionSO = (unsigned char*)"0.5";
+	unsigned char* pVersionSO = (unsigned char*)"0.7";
 
     unsigned int vbytepic = 0, vbytevdg;
     unsigned char *vbufptr;
@@ -87,7 +87,7 @@ private:
 	unsigned char arrvdiratu[128];
 	unsigned char arrvbufkptr[128];
 	unsigned char arrvbuf[64];
-	unsigned char arrmcfgfile[12288];
+	unsigned char arrmcfgfile[180000];
 
 	unsigned char vparamstr[255]; //  255 Char Param string
 	unsigned int vparam[29]; //  29 Parameters
@@ -125,6 +125,14 @@ private:
 	unsigned long  vtotmem; // Quantidade de memoria total, vindo da bios
 	unsigned int  v10ms; // contador 10mS para programas principais na multitarefa
 
+	unsigned int vxmaxold;
+	unsigned int vymaxold; 
+	unsigned int voverx; //  Overlay video texto para janelas
+	unsigned int vovery; //  Overlay video texto para janelas
+	unsigned char  next_pos;
+	unsigned int vpostx;
+	unsigned int vposty;
+
 	TCHAR * retPathAndFile(char * cFileName);
 	int fsMount(void);
 	void putPrompt(unsigned int plinadd);
@@ -133,6 +141,21 @@ private:
 	void catFile(unsigned char *parquivo);
 	static void KeyPressedHandler (const char *pString);
 	static void KeyStatusHandlerRaw (unsigned char ucModifiers, const unsigned char RawKeys[6]);
+	
+	void startMGI(void);
+	void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y);
+	void redrawMain(void);
+	void redrawMainRest(void);
+	unsigned char editortela(void);
+	void desenhaMenu(void);
+	void desenhaIconesUsuario(void);
+	void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone);
+	unsigned char new_menu(void);
+	void executeCmd(void);
+	void new_icon(void);
+	void del_icon(void);
+	void mgi_setup(void);
+	void loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename);
 };
 
 
@@ -164,6 +187,24 @@ typedef char                    CHAR;
 
 #define CONV_DATA    0x01
 #define CONV_HORA    0x02
+
+// Graphical Functions
+#define ICONSPERLINE   8  // Quantidade de Icones por linha
+#define SPACEICONS     4  // Quantidade de Espaços entre os Icones Horizontal
+#define COLINIICONS   40  // Linha Inicial dos Icones
+#define LINHAMENU      36
+#define COLMENU       48
+#define LINMENU       4
+
+#define ICON_HOME  50
+#define ICON_RUN  51
+#define ICON_NEW  52
+#define ICON_DEL  53
+#define ICON_MMSJDOS  54
+#define ICON_SETUP  55
+#define ICON_EXIT  56
+#define ICON_HOURGLASS  57
+
 
 //-----------------------------------------------------------------------------
 #endif

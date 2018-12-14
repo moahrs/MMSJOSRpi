@@ -19,9 +19,10 @@
 *                                  do Circle lib, e desenv soft serial (ver pinos)
 * 07/12/2018  0.6     Moacir Jr.   SO por si mesmo. Deixará de ter is drivers incorporados.
 *                                  drivers, como bluetooth, wifi (modulo ou nativo placa), 
-*                                  video grafico, serao desenvolvidos a parte. No SO somente 
-*                                  Video texto (hdmi ou tft), FileSystem, serial, timer e etc 
-*                                  (basico do bcm2835).  
+*                                  serao desenvolvidos a parte. No SO somente 
+*                                  Video (hdmi ou tft), FileSystem, serial, timer e etc 
+*                                  (basico do bcm2835).
+* 11/12/2018  0.7     Moacir Jr.   Colocar Grafico  
 *--------------------------------------------------------------------------------
 * ---------------
 * Mapa de Memoria
@@ -61,6 +62,18 @@
 * |             |
 * +-------------+ 1FFFFFFFh 
 *
+********************************************************************************
+*
+* Icones MGI
+* 50 = Home
+* 51 = Run
+* 52 = New Icon
+* 53 = Del Icon
+* 54 = MMSJDOS
+* 55 = Setup MGI
+* 56 = Exit
+* 57 = Hourglass
+*
 ********************************************************************************/
 
 #define __USE_TFT_SCROLL__
@@ -70,6 +83,7 @@
 #include <circle/machineinfo.h>
 #include <circle/debug.h>
 #include <circle/util.h>
+#include <circle/alloc.h>
 #include <SDCard/emmc.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -137,9 +151,9 @@ boolean CMMSJOS::Initialize (void)
     Tags.GetTag (PROPTAG_GET_ARM_MEMORY, &TagMemory, sizeof TagMemory);
     vtotmem = (TagMemory.nSize - (8 << 20) );
 
-    vbufkptr = (unsigned char*)&arrvbufkptr;
-    vbuf = (unsigned char*)&arrvbuf;
-    mcfgfile = (unsigned char*)&arrmcfgfile;
+    vbufkptr = (unsigned char*)malloc(128);
+    vbuf = (unsigned char*)malloc(64);
+    mcfgfile = (unsigned char*)malloc(180000);
     vbufptr = vbuf;
     *vbufptr = 0x00;
 
@@ -295,7 +309,7 @@ void CMMSJOS::processCmd(void)
     char linhacomando[32], linhaarg[32];
     unsigned char *blin = (unsigned char*)vbuf;
     char vlinha[40], vproccd[32];
-    unsigned int varg = 0;
+    unsigned int varg = 0, pxx, pyy;
     unsigned int ix, iy, iz = 0, ikk = 0;
     unsigned int vbytepic = 0, ikx, iky, ikz;
     unsigned char vparam[32], vparam2[16], vpicret;
@@ -377,6 +391,16 @@ void CMMSJOS::processCmd(void)
         else if (!strcmp(linhacomando,"VER") && iy == 3) 
         {
             printf("MMSJ-OS v%s\n", pVersionSO);
+        }
+        else if (!strcmp(linhacomando,"MGI") && iy == 3) 
+        {
+            startMGI();
+        }
+        else if (!strcmp(linhacomando,"VIMG") && iy == 4) 
+        {
+            loadImage(0,0,320,240,(char*)vparam);
+            p_mOut->VerifyTouchLcd(WHAITTOUCH, &pxx, &pyy);
+            p_mOut->clearScr();            
         }
         else if (!strcmp(linhacomando,"LS") && iy == 2) 
         {
@@ -1210,3 +1234,721 @@ int CMMSJOS::fsMount(void)
 
     return pResM;
 }
+
+//-----------------------------------------------------------------------------
+// Parte Grafica
+//-----------------------------------------------------------------------------
+void CMMSJOS::startMGI(void) 
+{
+    unsigned char vnomefile[12];
+    unsigned char lc, ll, *ptr_ico, *ptr_prg, *ptr_pos;
+    unsigned char* vMemSystemAreaPos;
+
+    p_mOut->desativaCursor();
+
+    ptr_pos = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16));
+    ptr_ico = ptr_pos + 32;
+    ptr_prg = ptr_ico + 320;
+
+    for (lc = 0; lc <= 31; lc++) {
+        *ptr_pos++ = 0x00;
+        for (ll = 0; ll <= 9; ll++) {
+            *ptr_ico++ = 0x00;
+            *ptr_prg++ = 0x00;
+        }
+    }
+
+    vkeyopen = 0;
+    p_mOut->SetOutput(2); // Grafico
+    p_mOut->SetTypeKeyboard((pKeyboard == 0 ? 0 : 1)); // 0 - Touch, 1 - USB
+
+    p_mOut->SetColorForeground(White);
+    p_mOut->SetColorBackground(Blue);
+
+    vparamstr[0] = '\0';
+    vparam[0] = 20;
+    vparam[1] = 80;
+    vparam[2] = 280;
+    vparam[3] = 100;
+    vparam[4] = BTNONE;
+    p_mOut->showWindow(vparamstr, vparam);
+
+    p_mOut->writesxy(140,85,16,(char*)"MGI",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    p_mOut->writesxy(74,105,8,(char*)"Graphical Interface",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    p_mOut->writesxy(94,166,8,(char*)"Please Wait...",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+
+    p_mOut->writesxy(86,155,8,(char*)"Loading Config",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_MGICFG);
+    vnomefile[0] = 0x00;
+    _strcat((char*)vnomefile,(char*)"/sys/cfg/MMSJMGI");
+    _strcat((char*)vnomefile,(char*)".CFG");
+    loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
+
+    p_mOut->writesxy(86,155,8,(char*)"Loading Icons ",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_ICONES);
+    vnomefile[0] = 0x00;
+    _strcat((char*)vnomefile,(char*)"/sys/img/MOREICON");
+    _strcat((char*)vnomefile,(char*)".LIB");
+    loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
+
+    p_mTimer->MsDelay (1000);
+
+    redrawMain();
+
+    p_mOut->SetColorForeground(White);
+    p_mOut->SetColorBackground(Black);
+
+    while(editortela());
+
+    p_mOut->SetOutput(1); // Texto
+    p_mOut->SetColumn(0);
+    p_mOut->SetRow(0);
+
+    p_mOut->clearScr(p_mOut->GetColorBackground());
+
+    p_mOut->ativaCursor();
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) 
+{
+    unsigned int ix, pw, ph;
+    unsigned int pimage[640];
+
+    for (ix = 0; ix <= 575; ix++)
+    {
+        pimage[ix] = ((*vimage++ & 0xFF) << 8); 
+        pimage[ix] += (*vimage++ & 0xFF);
+    }
+
+    pw = 24;
+    ph = 24;
+
+    p_mOut->PutImage(pimage, x, y, pw, ph);
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::redrawMain(void) 
+{
+    p_mOut->clearScr(Black);
+    loadImage(0,0,320,240,(char*)"/sys/img/ut_logo.bmp");
+
+    p_mOut->SaveScreen(0,0,320,240);
+
+    // Desenhar Barra Menu Principal / Status
+    desenhaMenu();
+
+    // Desenhar Icones da tela (lendo do disco)
+    //desenhaIconesUsuario();
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::redrawMainRest(void) 
+{
+    p_mOut->RestoreScreen(0,0,320,240);
+    p_mOut->SaveScreen(0,0,320,240);
+
+    // Desenhar Barra Menu Principal / Status
+    desenhaMenu();
+
+    // Desenhar Icones da tela (lendo do disco)
+    //desenhaIconesUsuario();
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::desenhaMenu(void) 
+{
+    unsigned char lc;
+    unsigned int vx, vy;
+
+    vx = COLMENU;
+    vy = LINMENU;
+
+    p_mOut->FillRect(0, 0, p_mOut->GetWidth(), 35, Black);
+
+    for (lc = 50; lc <= 56; lc++) 
+    {
+        MostraIcone(vx, vy, lc);
+        vx += 32;
+    }
+
+    p_mOut->FillRect(0, (p_mOut->GetHeight() - 35), p_mOut->GetWidth(), 35, Black);
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::desenhaIconesUsuario(void) {
+  unsigned int vx, vy;
+  unsigned char lc, *ptr_ico, *ptr_prg, *ptr_pos;
+
+  // COLOCAR ICONSPERLINE = 10
+  // COLOCAR SPACEICONS = 8
+  
+  next_pos = 0;
+
+  ptr_pos = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16));
+  ptr_ico = ptr_pos + 32;
+  ptr_prg = ptr_ico + 320;
+
+  for(lc = 0; lc <= (ICONSPERLINE * 4 - 1); lc++) {
+    ptr_pos = ptr_pos + lc;
+    ptr_ico = ptr_ico + (lc * 10);
+    ptr_prg = ptr_prg + (lc * 10);
+
+    if (*ptr_prg != 0 && *ptr_ico != 0) {
+      if (*ptr_pos <= (ICONSPERLINE - 1)) {
+        vx = COLINIICONS + (24 + SPACEICONS) * *ptr_pos;
+        vy = 40;
+      }
+      else if (*ptr_pos <= (ICONSPERLINE * 2 - 1)) {
+        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
+        vy = 72;
+      }
+      else if (*ptr_pos <= (ICONSPERLINE * 3 - 1)) {
+        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE);
+        vy = 104;
+      }
+      else {
+        vx = COLINIICONS + (24 + SPACEICONS) * (*ptr_pos - ICONSPERLINE * 2);
+        vy = 136;
+      }
+
+      MostraIcone(vx, vy, lc);
+
+      next_pos = next_pos + 1;
+    }
+  }
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone) {
+    unsigned char vnomefile[12];
+    unsigned char *ptr_prg;
+    unsigned char *ptr_viconef;
+
+    ptr_prg = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16) + 32 + 320);
+    ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (1152 * (vicone + 10))));
+
+    // Procura Icone no Disco se Nao for Padrao
+    if (vicone < 50) {
+        ptr_prg = ptr_prg + (vicone * 10);
+        vnomefile[0] = 0x00;
+        _strcat((char*)vnomefile,(char*)"/usr/img/");
+        _strcat((char*)vnomefile,(char*)ptr_prg);
+        _strcat((char*)vnomefile,(char*)".ICO");
+        loadFile(vnomefile, (unsigned char*)&ptr_viconef);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+        if (verro)
+            vicone = 59;
+    }
+
+    if (vicone >= 50) {
+        vicone -= 50;
+        ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (1152 * vicone)));
+    }
+
+    // Mostra Icone
+    PutIcone(ptr_viconef, vvx, vvy);
+}
+
+//--------------------------------------------------------------------------
+unsigned char CMMSJOS::editortela(void) {
+    unsigned char vresp = 1;
+    unsigned char vx, cc, vpos, vposiconx, vposicony;
+    unsigned char *ptr_prg;
+
+    p_mOut->VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
+
+    // Para Testes
+//    p_mOut->SetColumn(0);
+//    p_mOut->SetRow(10);
+//    printf("%d x %d",vpostx,vposty);
+
+    if (vposty <= 30)
+        vresp = new_menu();
+    else {
+        vposiconx = COLINIICONS;
+        vposicony = 40;
+        vpos = 0;
+
+        if (vposty >= 136) {
+            vpos = ICONSPERLINE * 3;
+            vposicony = 136;
+        }
+        else if (vposty >= 30) {
+            vpos = ICONSPERLINE * 2;
+            vposicony = 104;
+        }
+        else if (vposty >= 30) {
+            vpos = ICONSPERLINE;
+            vposicony = 72;
+        }
+
+        if (vpostx >= COLINIICONS && vpostx <= (COLINIICONS + (24 + SPACEICONS) * ICONSPERLINE) && vposty >= 40) {
+          cc = 1;
+          for(vx = (COLINIICONS + (24 + SPACEICONS) * (ICONSPERLINE - 1)); vx >= (COLINIICONS + (24 + SPACEICONS)); vx -= (24 + SPACEICONS)) {
+            if (vpostx >= vx) {
+              vpos += ICONSPERLINE - cc;
+              vposiconx = vx;
+              break;
+            }
+
+            cc++;
+          }
+
+          ptr_prg = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16) + 32 + 320);
+          ptr_prg = ptr_prg + (vpos * 10);
+
+          if (*ptr_prg != 0) {
+            p_mOut->InvertRect( vposiconx, vposicony, 24, 24);
+
+            strcpy((char*)vbuf,(char *)ptr_prg);
+
+            MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+
+            processCmd();
+
+            *vbuf = 0x00;
+
+            redrawMainRest();
+          }
+        }
+    }
+
+    return vresp;
+}
+
+//-------------------------------------------------------------------------
+unsigned char CMMSJOS::new_menu(void) {
+    unsigned int vy, lc, vposicony, mx, my, menyi[8], menyf[8];
+    unsigned char vpos = 0, vresp, mpos;
+
+    vresp = 1;
+
+    if (vpostx >= COLMENU && vpostx <= (COLMENU + 24)) {
+        mx = 0;
+        my = LINHAMENU;
+        mpos = 0;
+
+        p_mOut->FillRect(mx,my,128,42,White);
+        p_mOut->DrawRect(mx,my,128,42,Black);
+
+        mpos += 2;
+        menyi[0] = my + mpos;
+        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"Format",Black,White);
+        mpos += 12;
+        menyf[0] = my + mpos;
+        p_mOut->DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+
+        mpos += 2;
+        menyi[1] = my + mpos;
+        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"Help",Black,White);
+        mpos += 12;
+        menyf[1] = my + mpos;
+        mpos += 2;
+        menyi[2] = my + mpos;
+        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"About",Black,White);
+        mpos += 12;
+        menyf[2] = my + mpos;
+        p_mOut->DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+
+        p_mOut->VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
+
+        if ((vposty >= my && vposty <= my + 42) && (vpostx >= mx && vpostx <= mx + 128)) {
+            vpos = 0;
+            vposicony = 0;
+
+            for(vy = 0; vy <= 1; vy++) {
+                if (vposty >= menyi[vy] && vposty <= menyf[vy]) {
+                    vposicony = menyi[vy];
+                    break;
+                }
+
+                vpos++;
+            }
+
+            if (vposicony > 0)
+                p_mOut->InvertRect( mx + 4, vposicony, 120, 12);
+
+            switch (vpos) {
+                case 0: // Format
+                    break;
+                case 1: // Help
+                    break;
+                case 2: // About
+                    p_mOut->message((char*)"MGI v0.1\nGraphical Interface\n \nwww.utilityinf.com.br\0", BTCLOSE, 0);
+                    break;
+            }
+        }
+
+        redrawMainRest();
+    }
+    else {
+        for (lc = 1; lc <= 6; lc++) {
+            mx = COLMENU + (32 * lc);
+            if (vpostx >= mx && vpostx <= (mx + 24)) {
+                p_mOut->InvertRect( mx, 4, 24, 24);
+                p_mOut->InvertRect( mx, 4, 24, 24);
+                break;
+            }
+        }
+
+        switch (lc) {
+            case 1: // RUN
+                executeCmd();
+                break;
+            case 2: // NEW ICON
+                break;
+            case 3: // DEL ICON
+                break;
+            case 4: // MMSJDOS
+                strcpy((char *)vbuf,(char*)"MDOS\0");
+
+                MostraIcone(144, 104, ICON_HOURGLASS);
+
+                processCmd();
+
+                *vbuf = 0x00;
+
+                break;
+            case 5: // SETUP
+                break;
+            case 6: // EXIT
+                mpos = p_mOut->message((char*)"Deseja Sair ?\0", BTYES | BTNO, 0);
+                if (mpos == BTYES)
+                    vresp = 0;
+
+                break;
+        }
+
+        if (lc < 6)
+            redrawMainRest();
+    }
+
+    return vresp;
+}
+
+//-------------------------------------------------------------------------
+void CMMSJOS::loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename) 
+{
+    unsigned long imgSize = loadFile((unsigned char*)filename, (unsigned char*)mcfgfile);
+    if (imgSize > 0)
+    {
+        printf("%08X\n", mcfgfile);
+        printf("%02X.%02X.%02X.%02X\n", *(mcfgfile + 4), *(mcfgfile + 5), *(mcfgfile + 6), *(mcfgfile + 7));
+        p_mOut->showImageBMP(px, py, pw, ph, (unsigned char*)mcfgfile);
+    }
+    else
+        printf("Load File %s Error\n",filename);
+}
+
+//-------------------------------------------------------------------------
+void CMMSJOS::executeCmd(void) {
+/*    unsigned char vstring[64], vwb;
+
+    vstring[0] = '\0';
+
+    strcpy((char *)vparamstr,(char*)"Execute");
+    vparam[0] = 10;
+    vparam[1] = 40;
+    vparam[2] = 280;
+    vparam[3] = 50;
+    vparam[4] = BTOK | BTCANCEL;
+    showWindow();
+
+    writesxy(12,55,8,(char*)"Execute:",vcorwf,vcorwb);
+    fillin(vstring, 84, 55, 160, WINDISP);
+
+    while (1) {
+        fillin(vstring, 84, 55, 160, WINOPER);
+
+        vwb = waitButton();
+
+        if (vwb == BTOK || vwb == BTCANCEL)
+            break;
+    }
+
+    if (vwb == BTOK) {
+        strcpy((char *)p_mMMSJOS->vbuf, (char *)vstring);
+
+        MostraIcone(144, 104, ICON_HOURGLASS);  // Mostra Ampulheta
+
+        // Chama processador de comandos
+        p_mMMSJOS->processCmd();
+
+        while (vxmaxold != 0) {
+            vwb = waitButton();
+
+            if (vwb == BTCLOSE)
+                break;
+        }
+
+        if (vxmaxold != 0) {
+            p_mMMSJOS->vxmax = vxmaxold;
+            p_mMMSJOS->vymax = vymaxold;
+            p_mMMSJOS->vcol = 0;
+            p_mMMSJOS->vlin = 0;
+            voverx = 0;
+            vovery = 0;
+            vxmaxold = 0;
+            vymaxold = 0;
+        }
+
+        *p_mMMSJOS->vbuf = 0x00;  // Zera Buffer do teclado
+    }*/
+}
+
+//-------------------------------------------------------------------------
+void CMMSJOS::new_icon(void) {
+/*
+  byte vx, vy, cc, verro, vwb;
+
+  icon_ico[next_pos][0] = '\0';
+
+  vstring[0] = '\0';
+  SaveScreen(4,3,121,50);
+  showWindow("New Icon\0", 4, 3, 121, 50, BTOK | BTCANCEL);
+  GotoXY(6,14);
+  writes("Program Name:");
+  fillin(vstring, 6, 24, 113, WINDISP);
+
+  vwaittouch = 1;
+  while (1) {
+    fillin(vstring, 6, 24, 113, WINOPER);
+
+    vwb = waitButton();
+
+    if (vwb == BTOK || vwb == BTCANCEL)
+      break;
+  }
+
+  RestoreScreen(4,3,121,50);
+
+  if (vwb == BTOK) {
+    vkeybufflen = _strlen(vstring);
+    _strcpy(vkeybuff, vstring);
+
+    for (cc = 0; cc <= vkeybufflen; cc++) {
+      if (vkeybuff[cc] == '\0')
+        break;
+
+      icon_ico[next_pos][cc] = toupper(vkeybuff[cc]);
+      icon_ico[next_pos][cc + 1] = '\0';
+      icon_prg[next_pos][cc] = toupper(vkeybuff[cc]);
+      icon_prg[next_pos][cc + 1] = '\0';
+    }
+
+    verro = 0;
+
+    vkeybufflen = 0;
+    vkeybuff[0] = '\0';
+
+    // Verifica se existe o .BIN digitado
+    p_mMMSJOS->_strcat(vnomefile,icon_prg[next_pos],".BIN");
+    FindFileDir();
+    if (vcluster == 0xFFFF) {
+      message("Binary File\nNot Found\0", BTCLOSE, 0);
+      verro = 1;
+    }
+
+    // Verifica se n? ?icone duplicado
+    for (vx = 0; vx < ICONSPERLINE * 3; vx++) {
+      if (vx != next_pos) {
+        if (_strcmp(icon_prg[next_pos],icon_prg[vx])) {
+          message("Icon Already Exist\0", BTCLOSE, 0);
+          verro = 1;
+          break;
+        }
+      }
+    }
+
+    if (verro) {
+      icon_pos[next_pos] = 0;
+      for (vy = 0; vy < 10; vy++) {
+        icon_ico[next_pos][vy] = 0;
+        icon_prg[next_pos][vy] = 0;
+      }
+      return;
+    }
+
+    // Mostra e Grava nas Configuracoes o Novo Icone
+    if (icon_ico[next_pos][0] != '\0') {
+      if (next_pos <= (ICONSPERLINE - 1)) {
+        vx = COLINIICONS + (16 + SPACEICONS) * next_pos;
+        vy = 10;
+      }
+      else if (next_pos <= (ICONSPERLINE * 2 - 1)) {
+        vx = COLINIICONS + (16 + SPACEICONS) * (next_pos - ICONSPERLINE);
+        vy = 28;
+      }
+      else {
+        vx = COLINIICONS + (16 + SPACEICONS) * (next_pos - ICONSPERLINE * 2);
+        vy = 46;
+      }
+
+      icon_pos[next_pos] = next_pos;
+
+      SaveScreen(56, 24, 16, 16);
+      MostraIcone(53, 24, 58);  // Mostra Amplulheta
+
+      p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
+      vendmsb = 0xE5;
+      vendlsb = 0x10;
+      GravaArquivoMem(530);
+
+      RestoreScreen(56, 24, 16, 16);
+
+      MostraIcone(vx, vy, next_pos);
+      next_pos++;
+
+      message("Icon Created\nSuccessfully\0", BTCLOSE, 0);
+    }
+  }
+*/
+}
+
+//-------------------------------------------------------------------------
+void CMMSJOS::del_icon(void) {
+/*
+  byte vx, vy, cc, vpos, vposiconx, vposicony;
+  byte mkey, temdelete, dd;
+  temdelete = 0;
+
+  // Colocar Icone de Lixeira nos icones do usu?io
+  for (cc = 0; cc <= (ICONSPERLINE * 3 - 1); cc++) {
+    if (icon_ico[cc][0] != '\0' && icon_prg[cc][0] != '\0') {
+      temdelete = 1;
+
+      if (icon_pos[cc] <= (ICONSPERLINE - 1)) {
+        vx = COLINIICONS + (16 + SPACEICONS) * icon_pos[cc];
+        vy = 10;
+      }
+      else if (icon_pos[cc] <= (ICONSPERLINE * 2 - 1)) {
+        vx = COLINIICONS + (16 + SPACEICONS) * (icon_pos[cc] - ICONSPERLINE);
+        vy = 28;
+      }
+      else {
+        vx = COLINIICONS + (16 + SPACEICONS) * (icon_pos[cc] - ICONSPERLINE * 2);
+        vy = 46;
+      }
+
+      FillRect(vx + 8, vy + 8, 8, 8, White);
+      PutImage(icones[11], vx + 8, vy + 8, 8, 8);
+    }
+  }
+
+  if (temdelete) {
+    // Aguardar Touch
+    vwaittouch = 1;
+    VerifyTouchLcd(WHAITTOUCH);
+
+    // Verificar Posi?o
+    vposiconx = COLINIICONS;
+    vposicony = 10;
+    vpos = 0;
+
+    if (*vposty >= 50) {
+      vpos = ICONSPERLINE * 2;
+      vposicony = 46;
+    }
+    else if (*vposty >= 30) {
+      vpos = ICONSPERLINE;
+      vposicony = 28;
+    }
+
+    if (*vpostx >= COLINIICONS && *vpostx <= (COLINIICONS + (16 + SPACEICONS) * ICONSPERLINE) && *vposty >= 10) {
+      cc = 1;
+      for(vx = (COLINIICONS + (16 + SPACEICONS) * (ICONSPERLINE - 1)); vx >= (COLINIICONS + (16 + SPACEICONS)); vx -= (16 + SPACEICONS)) {
+        if (*vpostx >= vx) {
+          vpos += ICONSPERLINE - cc;
+          vposiconx = vx;
+          break;
+        }
+
+        cc++;
+      }
+
+      if (icon_prg[vpos][0] != '\0' && icon_ico[vpos][0] != '\0') {
+        // Confirmar "Dele?o"
+        mkey = message("Delete Icon ?\0", BTYES | BTNO, 0);
+        if (mkey == BTYES) {
+          // Apagar Icone
+          icon_pos[vpos] = 0;
+          for(cc = 0; cc <= 9; cc++) {
+            icon_ico[vpos][cc] = '\0';
+            icon_prg[vpos][cc] = '\0';
+          }
+
+          // Realocar Demais Icones
+          for(cc = vpos + 1; cc <= (ICONSPERLINE * 3 - 1); cc++) {
+            icon_pos[cc - 1] = cc - 1;
+            for(dd = 0; dd <= 9; dd++) {
+              icon_ico[cc - 1][dd] = icon_ico[cc][dd];
+              icon_prg[cc - 1][dd] = icon_prg[cc][dd];
+            }
+          }
+
+          vpos = (ICONSPERLINE * 3 - 1);
+          icon_pos[vpos] = 0;
+          for(cc = 0; cc <= 9; cc++) {
+            icon_ico[vpos][cc] = '\0';
+            icon_prg[vpos][cc] = '\0';
+          }
+
+          MostraIcone(53, 24, 58);  // Mostra Amplulheta
+
+          p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
+          vendmsb = 0xE5;
+          vendlsb = 0x10;
+          GravaArquivoMem(530);
+        }
+      }
+    }
+
+    // Apagar parte inferior ao menu na tela
+    FillRect(0, 8, LCDX, LCDY, White);
+
+    // Redesenhar tela
+    RedrawMain();
+  }
+  else
+    message("No Icons\nFor Delete\0", BTOK, 0);
+*/
+}
+
+//-------------------------------------------------------------------------
+void CMMSJOS::mgi_setup(void) {
+/*
+  byte vopc[1], vwb;
+
+  vopc[0] = mgi_flags[0];
+
+  SaveScreen(4,3,121,60);
+  showWindow("Configuration\0", 4, 3, 121, 60, BTOK | BTCANCEL);
+  GotoXY(6,14);
+  writes("Type Comm.:");
+  radioset(",USB,SERIAL\0", vopc, 6, 26, WINDISP);
+
+  vwaittouch = 1;
+  while (1) {
+    vwb = waitButton();
+
+    if (vwb == BTOK || vwb == BTCANCEL)
+      break;
+
+    radioset(",USB,SERIAL\0", vopc, 6, 26, WINOPER);
+  }
+
+  if (vwb == BTOK) {
+    MostraIcone(53, 24, 58);  // Mostra Amplulheta
+
+    mgi_flags[0] = vopc[0];
+
+    p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
+    vendmsb = 0xE5;
+    vendlsb = 0x10;
+    GravaArquivoMem(530);
+  }
+
+  RestoreScreen(4,3,121,60);
+*/
+}
+

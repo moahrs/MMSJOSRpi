@@ -15,30 +15,6 @@ private:
 	
 	static CMGI *s_pThis;
 	
-	unsigned int  viconef; // onde eh carregado o arquivo de configuracao e outros arquivos 12K
-	unsigned int  verro;
-    unsigned int vbytepic = 0, vbytevdg;
-	unsigned int vcorwb;
-	unsigned int vcorwf;
-	unsigned char paramVDG[255];
-	unsigned char  next_pos;
-	unsigned int vxmaxold;
-	unsigned int vymaxold; 
-	unsigned int voverx; //  Overlay video texto para janelas
-	unsigned int vovery; //  Overlay video texto para janelas
-	unsigned char vparamstr[255]; //  255 Char Param string
-	unsigned int vparam[29]; //  29 Parameters
-	unsigned char vbbutton;
-	unsigned char vkeyopen;
-	unsigned char vbytetec;
-	unsigned int pposx;
-	unsigned int pposy;
-	unsigned int vbuttonwiny;
-	unsigned char vbuttonwin[100];
-	unsigned int vpostx;
-	unsigned int vposty;
-	unsigned int  vxgmax;
-	unsigned int  vygmax;
 
 	// Funcoes Interface Grafica
 	void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y);

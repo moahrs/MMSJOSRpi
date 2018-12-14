@@ -4,16 +4,28 @@
 #define PORTRAIT 0
 #define LANDSCAPE 1
 
-#define Black 0
-#define Red 63488
-#define Green 2016
-#define Blue 31
-#define White 65535
-#define Purple 61727
-#define Yellow 65504
-#define Cyan 047
-#define d_gray 21130
-#define l_gray 31727
+#define Black 0x0000
+#define Red 0xF800
+#define Green 0x07E0
+#define Blue 0x001F
+#define White 0xFFFF
+#define Purple 0x780F
+#define Yellow 0xFFE0
+#define Cyan 0x07FF
+#define d_gray 0x03EF
+#define l_gray 0xC618
+#define Lime 0x87E0
+#define Aqua 0x5D1C
+#define Magenta 0xF81F
+#define Orange 0xFCA0
+#define Pink 0xF97F
+#define Brown 0x8200
+#define Violet 0x9199
+#define Silver 0xA510
+#define Gold 0xA508
+#define Navy 0x000F
+#define Maroon 0x7800
+#define Olive 0x7BE0
 
 #define TFT_DC RPI_V2_GPIO_P1_15	
 #define TFT_RST RPI_V2_GPIO_P1_16
@@ -46,8 +58,29 @@ public:
 
 	int TCHVerif(unsigned char pRetAds, Coordinate screen_cal);
 	int commVDG(unsigned char *vparam);
+
+	//----------------------------------------------------------------
+	// LCDG Advanced Graphic Functions
+	//----------------------------------------------------------------
 	void TFT_Dot(unsigned int x,unsigned int y,unsigned int color);
 	void TFT_Fill(unsigned int color);
+	void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_Line(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_H_Line(char X1,char X2,unsigned int y_pos,unsigned int color);
+	void TFT_V_Line(unsigned int Y1,unsigned int Y2,char x_pos,unsigned int color);
+	void TFT_Rectangle(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
+	void TFT_Circle(unsigned int x,unsigned int y,char radius,char fill,unsigned int color);
+	void TFT_WriteChar(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
+	void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
+	void TFT_Text(char* S,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
+	void TFT_Load_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture);
+	void TFT_Show_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y);
+	void TFT_Show_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture);
+	void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y);
+	void TFT_Scroll(unsigned char qtdlin, unsigned int pColor);
+	void TFT_Scroll(unsigned char qtdlin);
+	void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
+	void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 
 private:
 	static CLcdVdg *s_pThis;
@@ -123,23 +156,6 @@ private:
 	void TFT_Set_Address(unsigned int PX1,unsigned int PY1,unsigned int PX2,unsigned int PY2);
 	void TFT_Init(void);
 	unsigned int Set_Color(unsigned int R,unsigned int G,unsigned int B);
-
-	//----------------------------------------------------------------
-	// LCDG Advanced Graphic Functions
-	//----------------------------------------------------------------
-	void TFT_Box(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
-	void TFT_Line(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
-	void TFT_H_Line(char X1,char X2,unsigned int y_pos,unsigned int color);
-	void TFT_V_Line(unsigned int Y1,unsigned int Y2,char x_pos,unsigned int color);
-	void TFT_Rectangle(unsigned int X1,unsigned int Y1,unsigned int X2,unsigned int Y2,unsigned int color);
-	void TFT_Circle(unsigned int x,unsigned int y,char radius,char fill,unsigned int color);
-	void TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
-	void TFT_Text(char* S,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor);
-	void TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture);
-	void TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y);
-	void TFT_Scroll(unsigned char qtdlin);
-	void TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
-	void TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 
 	//----------------------------------------------------------------
 	// Keyboard Functions

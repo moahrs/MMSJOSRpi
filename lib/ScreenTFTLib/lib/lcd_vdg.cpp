@@ -134,13 +134,13 @@ void CLcdVdg::TFT_Init(void)
       pvideo[iy] = utlogo[ix];
       iy++;
       if (iy == 320) {
-        TFT_Image(vyy, 0, 40, 8, (unsigned int*)pvideo);
+        TFT_Show_Image(vyy, 0, 40, 8, (unsigned int*)pvideo);
         vyy = 18;
         iy = 0;
       }
     }
 
-    TFT_Image(26, 0, 40, 5, (unsigned int*)pvideo);
+    TFT_Show_Image(26, 0, 40, 5, (unsigned int*)pvideo);
 
     TFT_Text((char*)"VDG UT-300 v1.6a\0",0,46,8,White,Black);
     TFT_Text((char*)"TFT GLCD - SSD1289\0",10,46,8,White,Black);
@@ -302,21 +302,24 @@ int CLcdVdg::commVDG(unsigned char *vparam)
 
         break;
     case 0xDD: // Retorna posicao se tocado fora do teclado
-        *vparam = (pyyyreturn[0] & 0xFF00) >> 8;
-        *(vparam + 1) = (pyyyreturn[0] & 0x00FF);
-        *(vparam + 2) = (pxxxreturn[0] & 0xFF00) >> 8;
-        *(vparam + 3) = (pxxxreturn[0] & 0x00FF);
+        while (icountp > 0) 
+        {
+            *vparam = (pyyyreturn[0] & 0xFF00) >> 8;
+            *(vparam + 1) = (pyyyreturn[0] & 0x00FF);
+            *(vparam + 2) = (pxxxreturn[0] & 0xFF00) >> 8;
+            *(vparam + 3) = (pxxxreturn[0] & 0x00FF);
 
-        if (icountp > 0) {
-        	for(ix = 1; ix <= icountp; ix++) {
-        		iy = pxxxreturn[ix];
-        		pxxxreturn[ix - 1] = iy;
-        		iy = pyyyreturn[ix];
-        		pyyyreturn[ix - 1] = iy;
-        	}
-        	pxxxreturn[icountp] = 0x00;
-        	pyyyreturn[icountp] = 0x00;
-        	icountp--;
+          	for(ix = 1; ix <= icountp; ix++) 
+            {
+            		iy = pxxxreturn[ix];
+            		pxxxreturn[ix - 1] = iy;
+            		iy = pyyyreturn[ix];
+            		pyyyreturn[ix - 1] = iy;
+          	}
+
+          	pxxxreturn[icountp] = 0x00;
+          	pyyyreturn[icountp] = 0x00;
+          	icountp--;
         }
 
         break;
@@ -333,7 +336,7 @@ int CLcdVdg::commVDG(unsigned char *vparam)
         break;
 		case 0xDF:
         // vxxf e vyyf vao funcionar como dim_x e dim_y respectivamente
-        TFT_Image(vxx, vyy, vxxf, vyyf, (unsigned int*)pvideo);
+        TFT_Show_Image(vxx, vyy, vxxf, vyyf, (unsigned int*)pvideo);
         break;
 		case 0xEA:
         // vxxf e vyyf vao funcionar como width e height respectivamente, e fcorgraf como page
@@ -749,6 +752,22 @@ void CLcdVdg::TFT_Circle(unsigned int x,unsigned int y,char radius,char fill,uns
 }
 
 //-------------------------------------------------------------------
+void CLcdVdg::TFT_WriteChar(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor)
+{
+    if (C == 0x08) {
+      TFT_Char(' ',x,y,DimFont,Fcolor,Bcolor);
+      vxcur = x;
+      vycur = y;
+    }      
+    else {
+      TFT_Char(C,x,y,DimFont,Fcolor,Bcolor);
+      vxcur = x;
+      vycur = y;
+      vycur += 8;
+    }    
+}
+
+//-------------------------------------------------------------------
 void CLcdVdg::TFT_Char(char C,unsigned int x,unsigned int y,char DimFont,unsigned int Fcolor,unsigned int Bcolor)
 {
 	unsigned char *PtrFont;
@@ -856,19 +875,59 @@ void CLcdVdg::TFT_Text(char* S,unsigned int x,unsigned int y,char DimFont,unsign
 }
 
 //-------------------------------------------------------------------
-void CLcdVdg::TFT_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture) 
+// Carrega Imagem na pagina 11 da memoria de video
+//-------------------------------------------------------------------
+void CLcdVdg::TFT_Load_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture) 
+{
+    unsigned int ix, iy;
+
+    for(iy = pos_y; iy < (pos_y + dim_x); iy++ ) 
+    {
+        for(ix = pos_x; ix < (pos_x + dim_y); ix++ ) 
+        {
+              pBaseVideoMem[10][ix][iy] = *picture++;
+        }      
+    }
+}
+
+//-------------------------------------------------------------------
+// Mostra Imagem da pagina 11 da memoria de video
+//-------------------------------------------------------------------
+void CLcdVdg::TFT_Show_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y) 
+{
+    unsigned int *picturetoshow = pBaseVideoMem2;
+
+    for(iy = pos_y; iy < (pos_y + dim_x); iy++ ) 
+    {
+        for(ix = pos_x; ix < (pos_x + dim_y); ix++ ) 
+        {
+              *picturetoshow++ = pBaseVideoMem[10][ix][iy];
+        }      
+    }
+
+    TFT_Show_Image(pos_x,pos_y,dim_x,dim_y,(unsigned int*)picturetoshow);
+}
+
+//-------------------------------------------------------------------
+// Mostra Imagem do ponteiro passado
+//-------------------------------------------------------------------
+void CLcdVdg::TFT_Show_Image(unsigned int pos_x,unsigned int pos_y,unsigned int dim_x,unsigned int dim_y,unsigned int *picture) 
 {
     unsigned int x, y;
 
     bcm2835_gpio_write(TFT_CS,0);
     TFT_Set_Address(pos_x, pos_y, pos_x + dim_y - 1, pos_y + dim_x - 1);
-    for(y = pos_y; y < (pos_y + dim_x); y++ ) {
-	    for(x = pos_x; x < (pos_x + dim_y); x++ ) {
-            pBaseVideoAddrX = y;
-            pBaseVideoAddrY = x;
+
+    for(y = pos_y; y < (pos_y + dim_y); y++ ) 
+    {
+  	    for(x = pos_x; x < (pos_x + dim_x); x++ ) 
+        {
+            pBaseVideoAddrX = x;
+            pBaseVideoAddrY = y;
             Write_Data(*picture++);
         }
     }
+
     bcm2835_gpio_write(TFT_CS,1);
 }
 
@@ -877,14 +936,14 @@ void CLcdVdg::TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int 
 {
     unsigned int iy,xf,yf;
 
-    yf = pos_y + dim_x;
-    xf = pos_x + dim_y;
+    yf = pos_y + dim_y;
+    xf = pos_x + dim_x;
 
     bcm2835_gpio_write(TFT_CS,0);
 
     for (ix = pos_x; ix <= xf; ix++) {
 	    for (iy = pos_y; iy <= yf; iy++) {
-	        pvideo[iy] = pBaseVideoMem[0][iy][ix];
+	        pvideo[iy] = pBaseVideoMem[0][ix][iy];
 	    }
 
 	    TFT_Set_Address(ix,pos_y,ix,yf);
@@ -896,6 +955,13 @@ void CLcdVdg::TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int 
     }
 
     bcm2835_gpio_write(TFT_CS,1);
+}
+
+//-------------------------------------------------------------------
+void CLcdVdg::TFT_Scroll(unsigned char qtdlin, unsigned int pColor) 
+{
+    bcor = pColor;
+    TFT_Scroll(qtdlin);
 }
 
 //-------------------------------------------------------------------
@@ -930,8 +996,10 @@ void CLcdVdg::TFT_Scroll(unsigned char qtdlin)
 }
 
 //-------------------------------------------------------------------
-// 11 Paginas disponiveis, usaveis de 1 a 10
+// 8 Paginas disponiveis, usaveis de 1 a 8
 // Pagina 0 é a que esta sendo mostrada na tela
+// Pagina 9 é usada pelo teclado touch
+// Pagina 10 é usada para mostrar imagens
 //-------------------------------------------------------------------
 void CLcdVdg::TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
 {
@@ -941,9 +1009,9 @@ void CLcdVdg::TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, 
     vxxw = y + height;
     vyyw = x + width;
 
-    for (ix = y; ix <= vxxw; ix++) 
+    for (ix = y; ix < vxxw; ix++) 
     {
-  	    for (iy = x; iy <= vyyw; iy++) 
+  	    for (iy = x; iy < vyyw; iy++) 
         {
             temp = pBaseVideoMem[0][iy][ix];
             pBaseVideoMem[pPos][iy][ix] = temp;
@@ -952,8 +1020,10 @@ void CLcdVdg::TFT_SaveScreen(unsigned int pPos, unsigned int x, unsigned int y, 
 }
 
 //-------------------------------------------------------------------
-// 11 Paginas disponiveis, usaveis de 1 a 10
+// 8 Paginas disponiveis, usaveis de 1 a 8
 // Pagina 0 é a que esta sendo mostrada na tela
+// Pagina 9 é usada pelo teclado touch
+// Pagina 10 é usada para mostrar imagens
 //-------------------------------------------------------------------
 void CLcdVdg::TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int y, unsigned int width, unsigned int height) 
 {
@@ -964,10 +1034,10 @@ void CLcdVdg::TFT_RestoreScreen(unsigned int pPos, unsigned int x, unsigned int 
 
     bcm2835_gpio_write(TFT_CS,0);
 
-    for (ix = y; ix <= vxxw; ix++) 
+    for (ix = y; ix < vxxw; ix++) 
     {
         TFT_Set_Address(ix,x,ix,vyyw);
-        for (iy = x; iy <= vyyw; iy++) 
+        for (iy = x; iy < vyyw; iy++) 
         {
             data = pBaseVideoMem[pPos][iy][ix];
             pBaseVideoAddrX = iy;
@@ -1004,7 +1074,7 @@ void CLcdVdg::HideKeyboard(unsigned int xposini, unsigned int yposini)
 	pkeyativo = 0x00;
 
 	// Restore old screen
-	TFT_RestoreScreen(0x01, xposini, yposini, 221, 72);
+	TFT_RestoreScreen(9, xposini, yposini, 221, 72);
 }
 
 //-------------------------------------------------------------------
@@ -1015,7 +1085,7 @@ void CLcdVdg::ShowKeyboard(unsigned int xposini, unsigned int yposini, unsigned 
 
 	if (!pkeyativo) {
 		// Save actual position
-		TFT_SaveScreen(0x01, xposini, yposini, 221, 72);
+		TFT_SaveScreen(9, xposini, yposini, 221, 72);
 		
 		pkeyativo = 0x01;
 	}
@@ -1137,17 +1207,9 @@ void CLcdVdg::ShowKeyboard(unsigned int xposini, unsigned int yposini, unsigned 
 
 void CLcdVdg::ReturnKeyboard(unsigned int xposini, unsigned int yposini, unsigned int vpostx, unsigned int vposty) 
 {
-	unsigned char tc;
-	unsigned int vpy = 0, vpx = 0;
-  ptec[1] = 0x00;
-
-//  char* sqtdtam = '\0';
-//    itoa(vpostx, sqtdtam, 10);
-//    TFT_Text("       ",100,220,8,White,Blue);
-//    TFT_Text(sqtdtam,100,220,8,White,Blue);
-//    itoa(vposty, sqtdtam, 10);
-//    TFT_Text("       ",200,220,8,White,Red);
-//    TFT_Text(sqtdtam,200,220,8,White,Red);
+  	unsigned char tc;
+	  unsigned int vpy = 0, vpx = 0;
+    ptec[1] = 0x00;
 
     //--- VERIFICA A POSIÇÃO PRESSIONADA
     if (vposty >= yposini && vposty <= (yposini + 17)) {    
