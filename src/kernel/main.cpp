@@ -17,6 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include <circle/input/keyboardbuffer.h>
 #include <kernel/kernel.h>
 #include <circle/startup.h>
 #include <drivers/bcm2835min.h>

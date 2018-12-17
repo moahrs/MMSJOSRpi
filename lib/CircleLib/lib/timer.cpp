@@ -248,6 +248,72 @@ boolean CTimer::GetUniversalTime (unsigned *pSeconds, unsigned *pMicroSeconds)
 	return TRUE;
 }
 
+CString *CTimer::GetDateTimeString (void)
+{
+	m_TimeSpinLock.Acquire ();
+
+	unsigned nTime = m_nTime;
+	unsigned nTicks = m_nTicks;
+
+	m_TimeSpinLock.Release ();
+
+	if (   nTime == 0
+	    && nTicks == 0)
+	{
+		return 0;
+	}
+
+	unsigned nSecond = nTime % 60;
+	nTime /= 60;
+	unsigned nMinute = nTime % 60;
+	nTime /= 60;
+	unsigned nHours = nTime;
+	unsigned nHour = nTime % 24;
+	nTime /= 24;
+
+	unsigned nYear = 1970;
+	while (1)
+	{
+		unsigned nDaysOfYear = IsLeapYear (nYear) ? 366 : 365;
+		if (nTime < nDaysOfYear)
+		{
+			break;
+		}
+
+		nTime -= nDaysOfYear;
+		nYear++;
+	}
+
+	unsigned nMonth = 0;
+	while (1)
+	{
+		unsigned nDaysOfMonth = GetDaysOfMonth (nMonth, nYear);
+		if (nTime < nDaysOfMonth)
+		{
+			break;
+		}
+
+		nTime -= nDaysOfMonth;
+		nMonth++;
+	}
+
+	nMonth++;
+	
+	unsigned nMonthDay = nTime + 1;
+
+	nTicks %= HZ;
+#if (HZ != 100)
+	nTicks = nTicks * 100 / HZ;
+#endif
+
+	CString *pString = new CString;
+	assert (pString != 0);
+
+	pString->Format ("%02u/%02u/%04u-%02u:%02u:%02u", nMonthDay, nMonth, nYear, nHour, nMinute, nSecond);
+
+	return pString;
+}
+
 CString *CTimer::GetTimeString (void)
 {
 	m_TimeSpinLock.Acquire ();

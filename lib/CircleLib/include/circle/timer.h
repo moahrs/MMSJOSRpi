@@ -89,6 +89,7 @@ public:
 	/// resulting CString object must be deleted by caller\n
 	/// Current time according to our time zone
 	CString *GetTimeString (void);
+	CString *GetDateTimeString (void);
 
 	/// \brief Starts a kernel timer which elapses after a given delay,\n
 	/// a timer handler gets called then

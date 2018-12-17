@@ -21,6 +21,17 @@
     #define NULL        '\0'
 #endif
 
+typedef struct tagMMSJConfig
+{
+	unsigned int   TextColorF;
+	unsigned int   TextColorB;
+	unsigned int   MgiColorF;
+	unsigned int   MgiColorB;
+	unsigned int   StartEnv;
+	unsigned int   TypeComm;
+} MMSJCONFIG;
+
+
 class CMMSJOS
 {
 public:
@@ -56,6 +67,10 @@ private:
 	CDWHCIDevice *p_mDWHCI;
 	FATFS *p_mFileSystem;
 	CEMMCDevice *p_mEMMC;
+    CKeyboardBuffer *p_mbufKeyboard;
+
+	MMSJCONFIG vMMSJConfig;
+
 	#ifdef __USE_TFT_LCD__
 		CScrTft *p_mOut;
 	#else
@@ -133,14 +148,20 @@ private:
 	unsigned int vpostx;
 	unsigned int vposty;
 
+	unsigned char vmgiflags[255];
+
+	unsigned char vTimerShowed;
+
 	TCHAR * retPathAndFile(char * cFileName);
 	int fsMount(void);
 	void putPrompt(unsigned int plinadd);
 	void runCmd(void);
-	unsigned char loadCFG(unsigned char ptipo);
+	unsigned char loadCFG(void);
 	void catFile(unsigned char *parquivo);
 	static void KeyPressedHandler (const char *pString);
 	static void KeyStatusHandlerRaw (unsigned char ucModifiers, const unsigned char RawKeys[6]);
+
+	static void TimerHandler (unsigned hTimer, void *pParam, void *pContext);
 	
 	void startMGI(void);
 	void PutIcone(unsigned char* vimage, unsigned int x, unsigned int y);
@@ -148,14 +169,18 @@ private:
 	void redrawMainRest(void);
 	unsigned char editortela(void);
 	void desenhaMenu(void);
+	void desenhaTimer(void);
 	void desenhaIconesUsuario(void);
 	void MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vicone);
-	unsigned char new_menu(void);
+	unsigned char showMenu(void);
 	void executeCmd(void);
 	void new_icon(void);
 	void del_icon(void);
-	void mgi_setup(void);
-	void loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename);
+	unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime);
+	void setupMGI(void);
+    void setupDateTimer(void);
+
+	void loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename, char pType);
 };
 
 
@@ -193,8 +218,12 @@ typedef char                    CHAR;
 #define SPACEICONS     4  // Quantidade de Espaços entre os Icones Horizontal
 #define COLINIICONS   40  // Linha Inicial dos Icones
 #define LINHAMENU      36
-#define COLMENU       48
-#define LINMENU       4
+#define QTDITENSMENU   6
+#define QTDCOLSMENU    3
+#define QTDLINSMENU   2
+
+#define COLMENU       1 // 48
+#define LINMENU       1 // 4
 
 #define ICON_HOME  50
 #define ICON_RUN  51
@@ -204,7 +233,11 @@ typedef char                    CHAR;
 #define ICON_SETUP  55
 #define ICON_EXIT  56
 #define ICON_HOURGLASS  57
+#define ICON_FILES 58
+#define ICON_HELP 59
 
+#define IMGFORMATBMP 0
+#define IMGFORMATICO 1
 
 //-----------------------------------------------------------------------------
 #endif

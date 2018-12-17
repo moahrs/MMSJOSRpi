@@ -27,6 +27,7 @@
 
 #ifdef __USE_TFT_LCD__
 	#include <ScreenTFT/screentft.h>
+	#include <ScreenTFT/gui.h>
 #else
 	#include <circle/screen.h>
 #endif

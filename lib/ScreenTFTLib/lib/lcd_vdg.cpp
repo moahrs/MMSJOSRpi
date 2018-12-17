@@ -941,16 +941,16 @@ void CLcdVdg::TFT_InvertRect(unsigned int pos_x,unsigned int pos_y,unsigned int 
 
     bcm2835_gpio_write(TFT_CS,0);
 
-    for (ix = pos_x; ix <= xf; ix++) {
-	    for (iy = pos_y; iy <= yf; iy++) {
-	        pvideo[iy] = pBaseVideoMem[0][ix][iy];
+    for (iy = pos_y; iy <= yf; iy++) {
+      for (ix = pos_x; ix <= xf; ix++) {
+	        pvideo[ix] = pBaseVideoMem[0][iy][ix];
 	    }
 
 	    TFT_Set_Address(ix,pos_y,ix,yf);
-	    for (iy = pos_y; iy <= yf; iy++) {
+      for (ix = pos_x; ix <= xf; ix++) {
           pBaseVideoAddrX = iy;
           pBaseVideoAddrY = ix;
-	        Write_Data(~pvideo[iy]);
+	        Write_Data(~pvideo[ix]);
 	    }
     }
 

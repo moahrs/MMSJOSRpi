@@ -40,6 +40,8 @@ public:
 	int Compare (const char *pString) const;
 	int Find (char chChar) const;			// returns index or -1 if not found
 
+	char *GetString(void) const;
+
 	int Replace (const char *pOld, const char *pNew); // returns number of occurrences
 
 	void Format (const char *pFormat, ...);		// supports only a small subset of printf(3)

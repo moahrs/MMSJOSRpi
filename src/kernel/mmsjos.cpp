@@ -67,18 +67,21 @@
 * Icones MGI
 * 50 = Home
 * 51 = Run
-* 52 = New Icon
-* 53 = Del Icon
+* 52 = New
+* 53 = trash
 * 54 = MMSJDOS
 * 55 = Setup MGI
 * 56 = Exit
 * 57 = Hourglass
+* 58 = Files
+* 59 = Help
 *
 ********************************************************************************/
 
 #define __USE_TFT_SCROLL__
 
 #include <circle/usb/usbkeyboard.h>
+#include <circle/input/keyboardbuffer.h>
 #include <circlelib/circlelib.h>
 #include <circle/machineinfo.h>
 #include <circle/debug.h>
@@ -107,6 +110,8 @@ CMMSJOS *CMMSJOS::s_pThis = 0;
 char CMMSJOS::vkeybuffer[255];
 
 const char* pMonthName[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+const char* pIconsMgi[10] = {"mgihome.ico", "mgirun.ico", "mginew.ico", "mgitrash.ico", "mgimdos.ico", "mgisetup.ico", "mgiexit.ico", "mgiglass.ico", "mgifiles.ico", "mgihelp.ico"};
+const int pItensMenuHome[QTDITENSMENU] = {ICON_RUN, ICON_MMSJDOS, ICON_FILES, ICON_SETUP, ICON_DEL, ICON_HELP};
 
 CMMSJOS::CMMSJOS (CInterruptSystem *mInterrupt, CTimer *mTimer, CDWHCIDevice *mDWHCI, FATFS *mFileSystem, CEMMCDevice *mEMMC)
 : p_mInterrupt (mInterrupt),
@@ -160,6 +165,13 @@ boolean CMMSJOS::Initialize (void)
     vtotmem = (vtotmem >> 20);
     vtotclock = (vtotclock / 1000000);
 
+    vMMSJConfig.TextColorF = Green;
+    vMMSJConfig.TextColorB = Black;
+    vMMSJConfig.MgiColorF = Black;
+    vMMSJConfig.MgiColorB = l_gray;
+    vMMSJConfig.StartEnv = 0;
+    vMMSJConfig.TypeComm = 0;
+
     p_mOut->ativaCursor();
 
     printf("OS> MMSJ-OS version %s\n", pVersionSO);
@@ -184,7 +196,7 @@ boolean CMMSJOS::Initialize (void)
     if (pKeyboard != 0)
     {
         printf("OS> USB Keyboard Found\n");
-        pKeyboard->RegisterKeyPressedHandler (KeyPressedHandler);
+        p_mbufKeyboard = new CKeyboardBuffer(pKeyboard);
     }
 
     pResM = fsMount();
@@ -192,6 +204,8 @@ boolean CMMSJOS::Initialize (void)
         printf("OS> Mounting Disk... Done\n");
     else
         printf("OS> Mounting Disk... Error (%d)\n",pResM);
+
+    loadCFG();
 
     return TRUE;
 }
@@ -201,10 +215,13 @@ boolean CMMSJOS::Initialize (void)
 //-----------------------------------------------------------------------------
 void CMMSJOS::Start(void)
 {
-    int ikx;
+    int ikx, nResult = 0;
 
     // Inicio SO
     strcpy((char*)vdiratu,"/\0");
+
+    if (vMMSJConfig.StartEnv == 1) 
+        startMGI();
 
     printf("\n");
     putPrompt(noaddline);
@@ -224,18 +241,22 @@ void CMMSJOS::Start(void)
         }
         else 
         {
-            pKeyboard->UpdateLEDs ();
+            pKeyboard->UpdateLEDs();
+            vbytepic = 0x00;
 
-            if (vkeybuffer[0] != 0)
+            if (nResult <= 0) 
             {
-                vbytepic = vkeybuffer[0];
+                nResult = p_mbufKeyboard->Read (vkeybuffer, sizeof vkeybuffer);
 
-                for(ikx = 0; ikx < strlen(vkeybuffer); ikx++)
-                    vkeybuffer[ikx] = vkeybuffer[ikx + 1];
-                vkeybuffer[ikx] = 0x00;
+                if (nResult > 0)
+                    ikx = 0;
             }
-            else
-                vbytepic = 0x00;
+
+            if (nResult > 0) 
+            {
+                vbytepic = vkeybuffer[ikx++];
+                nResult--;
+            }
         }
 
         // Verifica Retorno
@@ -380,7 +401,11 @@ void CMMSJOS::processCmd(void)
     // Processar e definir o que fazer
     if (linhacomando[0] != 0) 
     {
-        if (!strcmp(linhacomando,"CLS") && iy == 3) 
+        if (!strcmp(linhacomando,"MMSJDOS") && iy == 7) 
+        {
+            // ver como fazer
+        }
+        else if (!strcmp(linhacomando,"CLS") && iy == 3) 
         {
             p_mOut->clearScr();
         }
@@ -398,7 +423,7 @@ void CMMSJOS::processCmd(void)
         }
         else if (!strcmp(linhacomando,"VIMG") && iy == 4) 
         {
-            loadImage(0,0,320,240,(char*)vparam);
+            loadImage(0,0,320,240,(char*)vparam,IMGFORMATBMP);
             p_mOut->VerifyTouchLcd(WHAITTOUCH, &pxx, &pyy);
             p_mOut->clearScr();            
         }
@@ -643,7 +668,7 @@ void CMMSJOS::processCmd(void)
             }
             else if (!strcmp(linhacomando,"LOADCFG") && iy == 7) 
             {
-                loadCFG(1);
+                loadCFG();
                 ix = 255;
             }
             else if (!strcmp(linhacomando,"INIT232") && iy == 7)
@@ -842,15 +867,15 @@ unsigned long CMMSJOS::loadFile(unsigned char *parquivo, unsigned char* xaddress
 }
 
 //-----------------------------------------------------------------------------
-unsigned char CMMSJOS::loadCFG(unsigned char ptipo) {
+unsigned char CMMSJOS::loadCFG(void) 
+{
     unsigned char vret = 1, vset[40], vparam[40], vigual, ipos;
     unsigned int ix, vval;
     unsigned char *mcfgfileptr = (unsigned char*)mcfgfile, varquivo[12];
 
-    strcpy((char*)varquivo,"MMSJCFG.INI");
-    loadFile(varquivo, (unsigned char*)&mcfgfile);
+    strcpy((char*)varquivo,"/sys/cfg/mmsjos.ini");
 
-    if (!verro) {
+    if (loadFile(varquivo, (unsigned char*)mcfgfile) > 0) {
         vset[0] = 0x00;
         vparam[0] = 0x00;
         vigual = 0;
@@ -870,15 +895,51 @@ unsigned char CMMSJOS::loadCFG(unsigned char ptipo) {
                     vparam[ipos] = 0x00;
 
                 if (!strcmp((char*)vset,"FCOLOR") && vigual == 6) {
-                    vval = atoi((char*)vparam);
-                    p_mOut->SetColorForeground(vval);
+                    if (p_mOut->GetOutput() == 1)
+                    {
+                        vval = atoi((char*)vparam);
+                        vMMSJConfig.TextColorF = vval;
+                        p_mOut->SetColorForeground(vval);
+                    }
                 }
                 else if (!strcmp((char*)vset,"BCOLOR") && vigual == 6) {
-                    vval = atoi((char*)vparam);
-                    p_mOut->SetColorBackground(vval);
+                    if (p_mOut->GetOutput() == 1)
+                    {
+                        vval = atoi((char*)vparam);
+                        vMMSJConfig.TextColorB = vval;
+                        p_mOut->SetColorBackground(vval);
+                    }
+                }
+                else if (!strcmp((char*)vset,"WFCOLOR") && vigual == 7) {
+                    if (p_mOut->GetOutput() == 2)
+                    {
+                        vval = atoi((char*)vparam);
+                        vMMSJConfig.MgiColorF = vval;
+                        p_mOut->SetColorForeground(vval);
+                    }
+                }
+                else if (!strcmp((char*)vset,"WBCOLOR") && vigual == 7) {
+                    if (p_mOut->GetOutput() == 2)
+                    {
+                        vval = atoi((char*)vparam);
+                        vMMSJConfig.MgiColorB = vval;
+                        p_mOut->SetColorBackground(vval);
+                    }
                 }
                 else if (!strcmp((char*)vset,"PATH") && vigual == 4) {
                     // futurinho
+                }
+                else if (!strcmp((char*)vset,"STARTENV") && vigual == 8) {
+                    vval = atoi((char*)vparam);
+
+                    if (vval == 0 || vval == 1)
+                        vMMSJConfig.StartEnv = vval;
+                }
+                else if (!strcmp((char*)vset,"TYPECOMM") && vigual == 8) {
+                    vval = atoi((char*)vparam);
+
+                    if (vval <= 2)
+                        vMMSJConfig.TypeComm = vval;
                 }
                 else if (!strcmp((char*)vset,"[END]") && vigual == 5) {
                     break;
@@ -899,9 +960,7 @@ unsigned char CMMSJOS::loadCFG(unsigned char ptipo) {
             }
 
             if (ipos > 40) {
-                if (ptipo) {
-                    printf("Config file syntax error...\n");
-                }
+                printf("Config file syntax error...\n");
 
                 break;
             }
@@ -909,18 +968,16 @@ unsigned char CMMSJOS::loadCFG(unsigned char ptipo) {
             mcfgfileptr++;
         }
 
-        if (ipos <= 40 && ptipo) {
+        if (ipos <= 40) {
             printf("Settings applied successfully...\n");
         }
 
         p_mOut->writec(0x08, NOADD_POS_SCR);
         p_mOut->ativaCursor();
     }
-    else {
-        if (ptipo) {
-            printf("Loading config file error...\n");
-        }
-        vret = 0;
+    else
+    {
+        printf("Loading config file error...\n");
     }
 
     return vret;
@@ -1202,8 +1259,8 @@ void CMMSJOS::KeyStatusHandlerRaw (unsigned char ucModifiers, const unsigned cha
 {
     assert (s_pThis != 0);
 
-    CString Message;
-    Message.Format ("Key status (modifiers %02X)", (unsigned) ucModifiers);
+    CString sMsgs;
+    sMsgs.Format ("Key status (modifiers %02X)", (unsigned) ucModifiers);
 
     for (unsigned i = 0; i < 6; i++)
     {
@@ -1212,11 +1269,11 @@ void CMMSJOS::KeyStatusHandlerRaw (unsigned char ucModifiers, const unsigned cha
             CString KeyCode;
             KeyCode.Format (" %02X", (unsigned) RawKeys[i]);
 
-            Message.Append (KeyCode);
+            sMsgs.Append (KeyCode);
         }
     }
 
-    CLogger::Get ()->Write("OS", LogNotice, Message);
+    CLogger::Get ()->Write("OS", LogNotice, sMsgs);
 }
 
 //
@@ -1241,7 +1298,7 @@ int CMMSJOS::fsMount(void)
 void CMMSJOS::startMGI(void) 
 {
     unsigned char vnomefile[12];
-    unsigned char lc, ll, *ptr_ico, *ptr_prg, *ptr_pos;
+    unsigned char ix, lc, ll, *ptr_ico, *ptr_prg, *ptr_pos;
     unsigned char* vMemSystemAreaPos;
 
     p_mOut->desativaCursor();
@@ -1259,44 +1316,32 @@ void CMMSJOS::startMGI(void)
     }
 
     vkeyopen = 0;
-    p_mOut->SetOutput(2); // Grafico
-    p_mOut->SetTypeKeyboard((pKeyboard == 0 ? 0 : 1)); // 0 - Touch, 1 - USB
+    vTimerShowed = 0;
 
-    p_mOut->SetColorForeground(White);
-    p_mOut->SetColorBackground(Blue);
-
-    vparamstr[0] = '\0';
-    vparam[0] = 20;
-    vparam[1] = 80;
-    vparam[2] = 280;
-    vparam[3] = 100;
-    vparam[4] = BTNONE;
-    p_mOut->showWindow(vparamstr, vparam);
-
-    p_mOut->writesxy(140,85,16,(char*)"MGI",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
-    p_mOut->writesxy(74,105,8,(char*)"Graphical Interface",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
-    p_mOut->writesxy(94,166,8,(char*)"Please Wait...",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
-
-    p_mOut->writesxy(86,155,8,(char*)"Loading Config",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    printf("\nLoading Config...\n");
     vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_MGICFG);
     vnomefile[0] = 0x00;
     _strcat((char*)vnomefile,(char*)"/sys/cfg/MMSJMGI");
     _strcat((char*)vnomefile,(char*)".CFG");
     loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
 
-    p_mOut->writesxy(86,155,8,(char*)"Loading Icons ",p_mOut->GetColorForeground(),p_mOut->GetColorBackground());
+    printf("Loading Icons...\n");
     vMemSystemAreaPos = (unsigned char*)(vMemSystemArea + MEM_POS_ICONES);
-    vnomefile[0] = 0x00;
-    _strcat((char*)vnomefile,(char*)"/sys/img/MOREICON");
-    _strcat((char*)vnomefile,(char*)".LIB");
-    loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
 
-    p_mTimer->MsDelay (1000);
+    for (ix = 0; ix <= 9; ix++)
+    {
+        vnomefile[0] = 0x00;
+        _strcat((char*)vnomefile,(char*)"/sys/img/");
+        _strcat((char*)vnomefile,(char*)pIconsMgi[ix]);
+        loadFile(vnomefile, (unsigned char*)vMemSystemAreaPos);
+        vMemSystemAreaPos += 3262;
+    }
 
+    p_mOut->SetOutput(2); // Grafico
+    loadCFG();
     redrawMain();
 
-    p_mOut->SetColorForeground(White);
-    p_mOut->SetColorBackground(Black);
+    p_mTimer->StartKernelTimer (60 * HZ, TimerHandler);
 
     while(editortela());
 
@@ -1310,28 +1355,10 @@ void CMMSJOS::startMGI(void)
 }
 
 //-----------------------------------------------------------------------------
-void CMMSJOS::PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) 
-{
-    unsigned int ix, pw, ph;
-    unsigned int pimage[640];
-
-    for (ix = 0; ix <= 575; ix++)
-    {
-        pimage[ix] = ((*vimage++ & 0xFF) << 8); 
-        pimage[ix] += (*vimage++ & 0xFF);
-    }
-
-    pw = 24;
-    ph = 24;
-
-    p_mOut->PutImage(pimage, x, y, pw, ph);
-}
-
-//-----------------------------------------------------------------------------
 void CMMSJOS::redrawMain(void) 
 {
     p_mOut->clearScr(Black);
-    loadImage(0,0,320,240,(char*)"/sys/img/ut_logo.bmp");
+    loadImage(0,0,320,240,(char*)"/sys/img/walpaper.bmp",IMGFORMATBMP);
 
     p_mOut->SaveScreen(0,0,320,240);
 
@@ -1358,21 +1385,39 @@ void CMMSJOS::redrawMainRest(void)
 //-----------------------------------------------------------------------------
 void CMMSJOS::desenhaMenu(void) 
 {
-    unsigned char lc;
     unsigned int vx, vy;
 
     vx = COLMENU;
     vy = LINMENU;
 
-    p_mOut->FillRect(0, 0, p_mOut->GetWidth(), 35, Black);
+    p_mOut->FillRect(0, 0, p_mOut->GetWidth(), 34, Black);
 
-    for (lc = 50; lc <= 56; lc++) 
-    {
-        MostraIcone(vx, vy, lc);
-        vx += 32;
-    }
+    MostraIcone(vx, vy, 50);    // Home
 
-    p_mOut->FillRect(0, (p_mOut->GetHeight() - 35), p_mOut->GetWidth(), 35, Black);
+    desenhaTimer();
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::desenhaTimer(void)
+{
+    unsigned char lc;
+    char vTimeTotal[16], vDateW[11], vTimeW[6];
+    CString *pTimeString = p_mTimer->GetDateTimeString();
+
+    strcpy(vTimeTotal,pTimeString->GetString());
+
+    for (lc = 0; lc <= 9; lc++)
+        vDateW[lc] = vTimeTotal[lc];
+    vDateW[10] = 0x00;
+
+    for (lc = 0; lc <= 4; lc++)
+        vTimeW[lc] = vTimeTotal[lc + 11];
+    vTimeW[5] = 0x00;
+
+    p_mOut->writesxy(256,5,8,vTimeW,White,Black);
+    p_mOut->writesxy(240,21,8,vDateW,White,Black);
+
+    vTimerShowed = 1;
 }
 
 //-----------------------------------------------------------------------------
@@ -1426,7 +1471,7 @@ void CMMSJOS::MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vico
     unsigned char *ptr_viconef;
 
     ptr_prg = (unsigned char*)(vMemSystemArea + (MEM_POS_MGICFG + 16) + 32 + 320);
-    ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (1152 * (vicone + 10))));
+    ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (3262 * (vicone + 10))));
 
     // Procura Icone no Disco se Nao for Padrao
     if (vicone < 50) {
@@ -1434,19 +1479,35 @@ void CMMSJOS::MostraIcone(unsigned int vvx, unsigned int vvy, unsigned char vico
         vnomefile[0] = 0x00;
         _strcat((char*)vnomefile,(char*)"/usr/img/");
         _strcat((char*)vnomefile,(char*)ptr_prg);
-        _strcat((char*)vnomefile,(char*)".ICO");
-        loadFile(vnomefile, (unsigned char*)&ptr_viconef);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
+        _strcat((char*)vnomefile,(char*)".ico");
+        loadFile(vnomefile, (unsigned char*)ptr_viconef);   // 12K espaco pra carregar arquivo. Colocar logica pra pegar tamanho e alocar espaco
         if (verro)
-            vicone = 59;
+            vicone = 255;
     }
 
     if (vicone >= 50) {
         vicone -= 50;
-        ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (1152 * vicone)));
+        ptr_viconef = (unsigned char*)(vMemSystemArea + (MEM_POS_ICONES + (3262 * vicone)));
     }
 
     // Mostra Icone
     PutIcone(ptr_viconef, vvx, vvy);
+}
+
+//-----------------------------------------------------------------------------
+void CMMSJOS::PutIcone(unsigned char* vimage, unsigned int x, unsigned int y) 
+{
+    unsigned int pw = 32, ph = 32;
+
+    p_mOut->showImageICO(x, y, pw, ph, (unsigned char*)vimage);
+}
+
+//--------------------------------------------------------------------------
+void CMMSJOS::TimerHandler (unsigned hTimer, void *pParam, void *pContext)
+{
+    s_pThis->desenhaTimer();
+
+    s_pThis->p_mTimer->StartKernelTimer (60 * HZ, TimerHandler);
 }
 
 //--------------------------------------------------------------------------
@@ -1457,13 +1518,8 @@ unsigned char CMMSJOS::editortela(void) {
 
     p_mOut->VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
 
-    // Para Testes
-//    p_mOut->SetColumn(0);
-//    p_mOut->SetRow(10);
-//    printf("%d x %d",vpostx,vposty);
-
-    if (vposty <= 30)
-        vresp = new_menu();
+    if (vposty <= 34)
+        vresp = showMenu();
     else {
         vposiconx = COLINIICONS;
         vposicony = 40;
@@ -1517,124 +1573,109 @@ unsigned char CMMSJOS::editortela(void) {
 }
 
 //-------------------------------------------------------------------------
-unsigned char CMMSJOS::new_menu(void) {
-    unsigned int vy, lc, vposicony, mx, my, menyi[8], menyf[8];
-    unsigned char vpos = 0, vresp, mpos;
-
+unsigned char CMMSJOS::showMenu(void) 
+{
+    unsigned int lc, vposicony, mx, my;
+    unsigned char vpos = 0, vresp, ix, iy;
+    unsigned int vwidthmenu = (40 * QTDCOLSMENU), vhightmenu = (40 * QTDLINSMENU);
     vresp = 1;
 
-    if (vpostx >= COLMENU && vpostx <= (COLMENU + 24)) {
+    if (vpostx >= COLMENU && vpostx <= (COLMENU + 32)) 
+    {
         mx = 0;
         my = LINHAMENU;
-        mpos = 0;
 
-        p_mOut->FillRect(mx,my,128,42,White);
-        p_mOut->DrawRect(mx,my,128,42,Black);
+        p_mOut->SaveScreen(0, LINHAMENU, vwidthmenu + 5, vhightmenu + 5);
+    
+        p_mOut->FillRect(0, LINHAMENU, vwidthmenu, vhightmenu, White);
 
-        mpos += 2;
-        menyi[0] = my + mpos;
-        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"Format",Black,White);
-        mpos += 12;
-        menyf[0] = my + mpos;
-        p_mOut->DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+        lc = 0;
+        for(iy = 0; iy < QTDLINSMENU; iy++)
+        {
+            for(ix = 0; ix < QTDCOLSMENU; ix++)
+            {
+                mx = ((ix * 40) + 4);
+                my = ((iy * 40 ) + LINHAMENU + 4);
+                MostraIcone(mx, my, pItensMenuHome[lc]);
+                lc++;
+            }
+        }
 
-        mpos += 2;
-        menyi[1] = my + mpos;
-        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"Help",Black,White);
-        mpos += 12;
-        menyf[1] = my + mpos;
-        mpos += 2;
-        menyi[2] = my + mpos;
-        p_mOut->writesxy(mx + 8,my + mpos,8,(char*)"About",Black,White);
-        mpos += 12;
-        menyf[2] = my + mpos;
-        p_mOut->DrawLine(mx,my + mpos,mx+128,my + mpos,Black);
+        while (1)
+        {
+            p_mOut->VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
 
-        p_mOut->VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
-
-        if ((vposty >= my && vposty <= my + 42) && (vpostx >= mx && vpostx <= mx + 128)) {
             vpos = 0;
             vposicony = 0;
 
-            for(vy = 0; vy <= 1; vy++) {
-                if (vposty >= menyi[vy] && vposty <= menyf[vy]) {
-                    vposicony = menyi[vy];
-                    break;
+            for(iy = 0; iy < QTDLINSMENU; iy++)
+            {
+                for(ix = 0; ix < QTDCOLSMENU; ix++)
+                {
+                    if ((vposty >= ((iy * 40) + LINHAMENU) && vposty <= (((iy + 1) * 40) + LINHAMENU)) && (vpostx >= (ix * 40) && vpostx <= ((ix + 1) * 40)))
+                    {
+                        vposicony = 1;
+                        break;
+                    }
+                    vpos++;
                 }
 
-                vpos++;
+                if (vposicony)
+                    break;
             }
+
+            p_mOut->RestoreScreen(0, LINHAMENU, vwidthmenu + 5, vhightmenu + 5);    
 
             if (vposicony > 0)
-                p_mOut->InvertRect( mx + 4, vposicony, 120, 12);
-
-            switch (vpos) {
-                case 0: // Format
-                    break;
-                case 1: // Help
-                    break;
-                case 2: // About
-                    p_mOut->message((char*)"MGI v0.1\nGraphical Interface\n \nwww.utilityinf.com.br\0", BTCLOSE, 0);
-                    break;
+            {
+                switch (vpos) 
+                {
+                    case 0: // Run
+                        break;
+                    case 1: // mmsjos
+                        break;
+                    case 2: // files
+                        break;
+                    case 3: // setup
+                        setupMGI();
+                        break;
+                    case 4: // Trash
+                        break;
+                    case 5: // Help
+                        message((char*)"MGI v0.1\nGraphical Interface\n \nwww.utilityinf.com.br\0", BTCLOSE, 0);
+                        break;
+                }
             }
+            else 
+                break;
         }
-
-        redrawMainRest();
     }
-    else {
-        for (lc = 1; lc <= 6; lc++) {
-            mx = COLMENU + (32 * lc);
-            if (vpostx >= mx && vpostx <= (mx + 24)) {
-                p_mOut->InvertRect( mx, 4, 24, 24);
-                p_mOut->InvertRect( mx, 4, 24, 24);
-                break;
-            }
-        }
-
-        switch (lc) {
-            case 1: // RUN
-                executeCmd();
-                break;
-            case 2: // NEW ICON
-                break;
-            case 3: // DEL ICON
-                break;
-            case 4: // MMSJDOS
-                strcpy((char *)vbuf,(char*)"MDOS\0");
-
-                MostraIcone(144, 104, ICON_HOURGLASS);
-
-                processCmd();
-
-                *vbuf = 0x00;
-
-                break;
-            case 5: // SETUP
-                break;
-            case 6: // EXIT
-                mpos = p_mOut->message((char*)"Deseja Sair ?\0", BTYES | BTNO, 0);
-                if (mpos == BTYES)
-                    vresp = 0;
-
-                break;
-        }
-
-        if (lc < 6)
-            redrawMainRest();
+    else if (vpostx >= 240) 
+    {
+        setupDateTimer();
     }
 
     return vresp;
 }
 
 //-------------------------------------------------------------------------
-void CMMSJOS::loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename) 
+void CMMSJOS::loadImage(unsigned int px, unsigned int py, unsigned int pw, unsigned int ph, char *filename, char pType) 
 {
     unsigned long imgSize = loadFile((unsigned char*)filename, (unsigned char*)mcfgfile);
+
     if (imgSize > 0)
     {
-        printf("%08X\n", mcfgfile);
-        printf("%02X.%02X.%02X.%02X\n", *(mcfgfile + 4), *(mcfgfile + 5), *(mcfgfile + 6), *(mcfgfile + 7));
-        p_mOut->showImageBMP(px, py, pw, ph, (unsigned char*)mcfgfile);
+        switch (pType)
+        {
+            case 0: // BMP
+                p_mOut->showImageBMP(px, py, pw, ph, (unsigned char*)mcfgfile);
+                break;
+            case 1: // ICO
+                p_mOut->showImageICO(px, py, pw, ph, (unsigned char*)mcfgfile);
+                break;
+            default:
+                printf("Type Image Not Supported\n");
+        }
     }
     else
         printf("Load File %s Error\n",filename);
@@ -1697,258 +1738,230 @@ void CMMSJOS::executeCmd(void) {
 }
 
 //-------------------------------------------------------------------------
-void CMMSJOS::new_icon(void) {
-/*
-  byte vx, vy, cc, verro, vwb;
+unsigned char CMMSJOS::message(char* bstr, unsigned char bbutton, unsigned int btime)
+{
+    unsigned int i, ii = 0, xi, yi, xm, ym, pwidth, pheight, xib, yib;
+    unsigned char qtdnl, maxlenstr;
+    unsigned char qtdcstr[8], poscstr[8];
+    unsigned char *bstrptr = new unsigned char[80], *bstrptr2 = new unsigned char[80], *bstrptr3 = bstrptr2;
+    unsigned char vBtOk;
 
-  icon_ico[next_pos][0] = '\0';
+    qtdnl = 1;
+    maxlenstr = 0;
+    qtdcstr[1] = 0;
+    poscstr[1] = 0;
+    i = 0;
 
-  vstring[0] = '\0';
-  SaveScreen(4,3,121,50);
-  showWindow("New Icon\0", 4, 3, 121, 50, BTOK | BTCANCEL);
-  GotoXY(6,14);
-  writes("Program Name:");
-  fillin(vstring, 6, 24, 113, WINDISP);
+    for (ii = 0; ii <= 7; ii++)
+        vbuttonwin[ii] = 0;
 
-  vwaittouch = 1;
-  while (1) {
-    fillin(vstring, 6, 24, 113, WINOPER);
+    bstrptr = (unsigned char*)bstr;
+    while (*bstrptr)
+    {
+        qtdcstr[qtdnl]++;
 
-    vwb = waitButton();
+        if (qtdcstr[qtdnl] > 26)
+            qtdcstr[qtdnl] = 26;
 
-    if (vwb == BTOK || vwb == BTCANCEL)
-      break;
-  }
+        if (qtdcstr[qtdnl] > maxlenstr)
+            maxlenstr = qtdcstr[qtdnl];
 
-  RestoreScreen(4,3,121,50);
+        if (*bstrptr == '\n')
+        {
+            qtdcstr[qtdnl]--;
+            qtdnl++;
 
-  if (vwb == BTOK) {
-    vkeybufflen = _strlen(vstring);
-    _strcpy(vkeybuff, vstring);
+            if (qtdnl > 6)
+                qtdnl = 6;
 
-    for (cc = 0; cc <= vkeybufflen; cc++) {
-      if (vkeybuff[cc] == '\0')
-        break;
-
-      icon_ico[next_pos][cc] = toupper(vkeybuff[cc]);
-      icon_ico[next_pos][cc + 1] = '\0';
-      icon_prg[next_pos][cc] = toupper(vkeybuff[cc]);
-      icon_prg[next_pos][cc + 1] = '\0';
-    }
-
-    verro = 0;
-
-    vkeybufflen = 0;
-    vkeybuff[0] = '\0';
-
-    // Verifica se existe o .BIN digitado
-    p_mMMSJOS->_strcat(vnomefile,icon_prg[next_pos],".BIN");
-    FindFileDir();
-    if (vcluster == 0xFFFF) {
-      message("Binary File\nNot Found\0", BTCLOSE, 0);
-      verro = 1;
-    }
-
-    // Verifica se n? ?icone duplicado
-    for (vx = 0; vx < ICONSPERLINE * 3; vx++) {
-      if (vx != next_pos) {
-        if (_strcmp(icon_prg[next_pos],icon_prg[vx])) {
-          message("Icon Already Exist\0", BTCLOSE, 0);
-          verro = 1;
-          break;
+            qtdcstr[qtdnl] = 0;
+            poscstr[qtdnl] = i + 1;
         }
-      }
+
+        bstrptr++;
+        i++;
     }
 
-    if (verro) {
-      icon_pos[next_pos] = 0;
-      for (vy = 0; vy < 10; vy++) {
-        icon_ico[next_pos][vy] = 0;
-        icon_prg[next_pos][vy] = 0;
-      }
-      return;
+    if (maxlenstr > 26)
+        maxlenstr = 26;
+
+    if (qtdnl > 6)
+        qtdnl = 6;
+
+    pwidth = maxlenstr * 10;
+    pwidth = pwidth + 2;
+    xm = pwidth / 2;
+    xi = 160 - xm - 1;
+
+    pheight = 10 * qtdnl;
+    pheight = pheight + 20;
+    ym = pheight / 2;
+    yi = 120 - ym - 1;
+
+    CWindow *wMessage = new CWindow(p_mOut, (char*)"\0", xi, yi, pwidth, pheight, p_mOut->GetColorForeground(), p_mOut->GetColorBackground());
+
+    for (i = 1; i <= qtdnl; i++)
+    {
+        xib = xi + xm;
+        xib = xib - ((qtdcstr[i] * 8) / 2);
+        yib = yi + 2 + (10 * (i - 1));
+
+        bstrptr = (unsigned char*)bstr + poscstr[i];
+        bstrptr2 = bstrptr3;
+        for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
+            *bstrptr2++ = *bstrptr++;
+        *bstrptr2 = 0x00;
+        wMessage->addElement(GUITEXT,(xib - xi),(yib - yi),0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)bstrptr3,0);
     }
 
-    // Mostra e Grava nas Configuracoes o Novo Icone
-    if (icon_ico[next_pos][0] != '\0') {
-      if (next_pos <= (ICONSPERLINE - 1)) {
-        vx = COLINIICONS + (16 + SPACEICONS) * next_pos;
-        vy = 10;
-      }
-      else if (next_pos <= (ICONSPERLINE * 2 - 1)) {
-        vx = COLINIICONS + (16 + SPACEICONS) * (next_pos - ICONSPERLINE);
-        vy = 28;
-      }
-      else {
-        vx = COLINIICONS + (16 + SPACEICONS) * (next_pos - ICONSPERLINE * 2);
-        vy = 46;
-      }
+    vBtOk = wMessage->addElement(GUIBUTTON,2,(pheight - 12),42,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"OK\0",0);  
 
-      icon_pos[next_pos] = next_pos;
+    ii = wMessage->run(btime, 1, vBtOk);
 
-      SaveScreen(56, 24, 16, 16);
-      MostraIcone(53, 24, 58);  // Mostra Amplulheta
+    delete wMessage;
 
-      p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
-      vendmsb = 0xE5;
-      vendlsb = 0x10;
-      GravaArquivoMem(530);
-
-      RestoreScreen(56, 24, 16, 16);
-
-      MostraIcone(vx, vy, next_pos);
-      next_pos++;
-
-      message("Icon Created\nSuccessfully\0", BTCLOSE, 0);
-    }
-  }
-*/
+    return ii;
 }
 
 //-------------------------------------------------------------------------
-void CMMSJOS::del_icon(void) {
-/*
-  byte vx, vy, cc, vpos, vposiconx, vposicony;
-  byte mkey, temdelete, dd;
-  temdelete = 0;
+void CMMSJOS::setupMGI(void) 
+{
+    unsigned char *vopc = new unsigned char[1], vwb;
+    unsigned char weRsTypeComm, weRsStartEnv, vBtOk, vBtCanc;
 
-  // Colocar Icone de Lixeira nos icones do usu?io
-  for (cc = 0; cc <= (ICONSPERLINE * 3 - 1); cc++) {
-    if (icon_ico[cc][0] != '\0' && icon_prg[cc][0] != '\0') {
-      temdelete = 1;
+    CWindow *wSetupMgi = new CWindow(p_mOut, (char*)"Configuration\0", 60, 50, 200, 180, p_mOut->GetColorForeground(), p_mOut->GetColorBackground());
+    wSetupMgi->addElement(GUITEXT,6,14,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Type Comm.:\0",0);    
+    weRsTypeComm = wSetupMgi->addElement(GUIRADIOSET,26,26,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)",BLUETOOTH HM10,BLUETOOTH,SERIAL\0",1,vMMSJConfig.TypeComm);    
+    wSetupMgi->addElement(GUITEXT,6,66,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Cores:\0",0);    
+    wSetupMgi->addElement(GUITEXT,6,76,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Foreground:\0",0);    
+    wSetupMgi->addElement(GUITEXT,6,96,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Background:\0",0);    
+    wSetupMgi->addElement(GUITEXT,6,126,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Start Enviroment:\0",0);    
+    weRsStartEnv = wSetupMgi->addElement(GUIRADIOSET,26,136,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)",Texto,Grafico (MGI)\0",1,vMMSJConfig.StartEnv);    
+    vBtOk = wSetupMgi->addElement(GUIBUTTON,2,168,50,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"OK\0",0);    
+    vBtCanc = wSetupMgi->addElement(GUIBUTTON,54,168,50,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Cancel\0",0);    
+    vwb = wSetupMgi->run(0, 2, vBtOk, vBtCanc);
 
-      if (icon_pos[cc] <= (ICONSPERLINE - 1)) {
-        vx = COLINIICONS + (16 + SPACEICONS) * icon_pos[cc];
-        vy = 10;
-      }
-      else if (icon_pos[cc] <= (ICONSPERLINE * 2 - 1)) {
-        vx = COLINIICONS + (16 + SPACEICONS) * (icon_pos[cc] - ICONSPERLINE);
-        vy = 28;
-      }
-      else {
-        vx = COLINIICONS + (16 + SPACEICONS) * (icon_pos[cc] - ICONSPERLINE * 2);
-        vy = 46;
-      }
+    if (vwb == vBtOk) 
+    {
+        MostraIcone(160, 120, ICON_HOURGLASS);  // Mostra Amplulheta
 
-      FillRect(vx + 8, vy + 8, 8, 8, White);
-      PutImage(icones[11], vx + 8, vy + 8, 8, 8);
-    }
-  }
+        vopc = wSetupMgi->GetReturnElement(weRsTypeComm);
+        vMMSJConfig.TypeComm = vopc[0];
+        vopc = wSetupMgi->GetReturnElement(weRsStartEnv);
+        vMMSJConfig.StartEnv = vopc[0];
 
-  if (temdelete) {
-    // Aguardar Touch
-    vwaittouch = 1;
-    VerifyTouchLcd(WHAITTOUCH);
-
-    // Verificar Posi?o
-    vposiconx = COLINIICONS;
-    vposicony = 10;
-    vpos = 0;
-
-    if (*vposty >= 50) {
-      vpos = ICONSPERLINE * 2;
-      vposicony = 46;
-    }
-    else if (*vposty >= 30) {
-      vpos = ICONSPERLINE;
-      vposicony = 28;
+        // Grava no Arquivo
     }
 
-    if (*vpostx >= COLINIICONS && *vpostx <= (COLINIICONS + (16 + SPACEICONS) * ICONSPERLINE) && *vposty >= 10) {
-      cc = 1;
-      for(vx = (COLINIICONS + (16 + SPACEICONS) * (ICONSPERLINE - 1)); vx >= (COLINIICONS + (16 + SPACEICONS)); vx -= (16 + SPACEICONS)) {
-        if (*vpostx >= vx) {
-          vpos += ICONSPERLINE - cc;
-          vposiconx = vx;
-          break;
-        }
+    delete wSetupMgi;
+}
 
-        cc++;
-      }
+//-------------------------------------------------------------------------
+void CMMSJOS::setupDateTimer(void)
+{
+    unsigned char vwb, vBtOk, vBtCanc;
+    unsigned char vdayw, vmontw, vyearw, vhourw, vminw;
+    unsigned char strDay[3], strMon[3], strYear[5];
+    unsigned char strHrs[3], strMin[3];
+    unsigned char *strPtr = new unsigned char[3];
+    unsigned long pRetWriteData;
+    time_t pData;
+    unsigned nTime = 0;
 
-      if (icon_prg[vpos][0] != '\0' && icon_ico[vpos][0] != '\0') {
-        // Confirmar "Dele?o"
-        mkey = message("Delete Icon ?\0", BTYES | BTNO, 0);
-        if (mkey == BTYES) {
-          // Apagar Icone
-          icon_pos[vpos] = 0;
-          for(cc = 0; cc <= 9; cc++) {
-            icon_ico[vpos][cc] = '\0';
-            icon_prg[vpos][cc] = '\0';
-          }
+    pData = ds1307_read();
 
-          // Realocar Demais Icones
-          for(cc = vpos + 1; cc <= (ICONSPERLINE * 3 - 1); cc++) {
-            icon_pos[cc - 1] = cc - 1;
-            for(dd = 0; dd <= 9; dd++) {
-              icon_ico[cc - 1][dd] = icon_ico[cc][dd];
-              icon_prg[cc - 1][dd] = icon_prg[cc][dd];
+    if (pData.Error) 
+        message((char*)"Read RTC Error\0", BTCLOSE, 0);
+    else
+    {
+        strDay[0] = BCD2UpperCh(pData.Day);
+        strDay[1] = BCD2LowerCh(pData.Day);
+        strDay[2] = 0;
+        strMon[0] = BCD2UpperCh(pData.Month);
+        strMon[1] = BCD2LowerCh(pData.Month);
+        strMon[2] = 0;
+        strYear[0] = '2';
+        strYear[1] = '0';
+        strYear[2] = BCD2UpperCh(pData.Year);
+        strYear[3] = BCD2LowerCh(pData.Year);
+        strYear[4] = 0;
+
+        strHrs[0] = BCD2UpperCh(pData.Hour);
+        strHrs[1] = BCD2LowerCh(pData.Hour);
+        strHrs[2] = 0;
+        strMin[0] = BCD2UpperCh(pData.Minute);
+        strMin[1] = BCD2LowerCh(pData.Minute);
+        strMin[2] = 0;
+
+        CWindow *wSetupDT = new CWindow(p_mOut, (char*)"Date and Time\0", 40, 60, 200, 100, p_mOut->GetColorForeground(), p_mOut->GetColorBackground());
+        wSetupDT->addElement(GUITEXT,6,14,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Date:\0",0);    
+        vdayw = wSetupDT->addElement(GUIFILLIN,10,24,20,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)strDay,0);    
+        wSetupDT->addElement(GUISPIN,35,22,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"\0",3,vdayw,1,31);    
+        vmontw = wSetupDT->addElement(GUIFILLIN,50,24,20,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)strMon,0);    
+        wSetupDT->addElement(GUISPIN,75,22,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"\0",3,vmontw,1,12);    
+        vyearw = wSetupDT->addElement(GUIFILLIN,90,24,40,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)strYear,0);    
+        wSetupDT->addElement(GUISPIN,135,22,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"\0",3,vyearw,0,9999);    
+        wSetupDT->addElement(GUITEXT,6,44,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Time:\0",0);    
+        vhourw = wSetupDT->addElement(GUIFILLIN,10,54,20,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)strHrs,0);    
+        wSetupDT->addElement(GUISPIN,35,52,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"\0",3,vhourw,0,23);    
+        vminw = wSetupDT->addElement(GUIFILLIN,50,54,20,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)strMin,0);    
+        wSetupDT->addElement(GUISPIN,75,52,0,0, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"\0",3,vminw,0,59);    
+        vBtOk = wSetupDT->addElement(GUIBUTTON,2,88,50,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"OK\0",0);    
+        vBtCanc = wSetupDT->addElement(GUIBUTTON,54,88,50,10, p_mOut->GetColorForeground(), p_mOut->GetColorBackground(),(unsigned char*)"Cancel\0",0);    
+        vwb = wSetupDT->run(0, 2, vBtOk, vBtCanc);
+
+        if (vwb == vBtOk)
+        {
+            MostraIcone(160, 120, ICON_HOURGLASS);  // Mostra Amplulheta
+
+            strPtr = wSetupDT->GetReturnElement(vdayw);
+            pData.Day = atoi((char*)strPtr);
+            strPtr = wSetupDT->GetReturnElement(vmontw);
+            pData.Month = atoi((char*)strPtr);
+            strPtr = wSetupDT->GetReturnElement(vyearw);
+            pData.Year = (atoi((char*)strPtr) - 2000);
+
+            strPtr = wSetupDT->GetReturnElement(vhourw);
+            pData.Hour = atoi((char*)strPtr);
+            strPtr = wSetupDT->GetReturnElement(vminw);
+            pData.Minute = atoi((char*)strPtr);
+            pData.Second = 0;
+
+            pRetWriteData = ds1307_write(pData);
+
+            if (pRetWriteData) 
+                message((char*)"Write RTC Error\0", BTCLOSE, 0);
+
+            pData = ds1307_read();
+
+            if (!pData.Error)
+            {
+                for (unsigned nYear = 1970; nYear < (unsigned)bcd2bin(pData.Year)+2000; nYear++)
+                {
+                    nTime += p_mTimer->IsLeapYear (nYear) ? 366 : 365;
+                }
+
+                for (unsigned nMonth = 0; nMonth < (unsigned)(bcd2bin(pData.Month) - 1); nMonth++)
+                {
+                    nTime += p_mTimer->GetDaysOfMonth (nMonth, bcd2bin(pData.Year)+2000);
+                }
+
+                nTime += bcd2bin(pData.Day)-1;
+                nTime *= 24;
+                nTime += bcd2bin(pData.Hour);
+                nTime *= 60;
+                nTime += bcd2bin(pData.Minute);
+                nTime *= 60;
+                nTime += bcd2bin(pData.Second);
+
+                p_mTimer->SetTime (nTime, FALSE);            
             }
-          }
+            else
+                message((char*)"Read RTC Error\0", BTCLOSE, 0);
 
-          vpos = (ICONSPERLINE * 3 - 1);
-          icon_pos[vpos] = 0;
-          for(cc = 0; cc <= 9; cc++) {
-            icon_ico[vpos][cc] = '\0';
-            icon_prg[vpos][cc] = '\0';
-          }
-
-          MostraIcone(53, 24, 58);  // Mostra Amplulheta
-
-          p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
-          vendmsb = 0xE5;
-          vendlsb = 0x10;
-          GravaArquivoMem(530);
+            desenhaTimer();
         }
-      }
+
+        delete wSetupDT;
     }
-
-    // Apagar parte inferior ao menu na tela
-    FillRect(0, 8, LCDX, LCDY, White);
-
-    // Redesenhar tela
-    RedrawMain();
-  }
-  else
-    message("No Icons\nFor Delete\0", BTOK, 0);
-*/
 }
-
-//-------------------------------------------------------------------------
-void CMMSJOS::mgi_setup(void) {
-/*
-  byte vopc[1], vwb;
-
-  vopc[0] = mgi_flags[0];
-
-  SaveScreen(4,3,121,60);
-  showWindow("Configuration\0", 4, 3, 121, 60, BTOK | BTCANCEL);
-  GotoXY(6,14);
-  writes("Type Comm.:");
-  radioset(",USB,SERIAL\0", vopc, 6, 26, WINDISP);
-
-  vwaittouch = 1;
-  while (1) {
-    vwb = waitButton();
-
-    if (vwb == BTOK || vwb == BTCANCEL)
-      break;
-
-    radioset(",USB,SERIAL\0", vopc, 6, 26, WINOPER);
-  }
-
-  if (vwb == BTOK) {
-    MostraIcone(53, 24, 58);  // Mostra Amplulheta
-
-    mgi_flags[0] = vopc[0];
-
-    p_mMMSJOS->_strcat(vnomefile,"MGI",".CNF");
-    vendmsb = 0xE5;
-    vendlsb = 0x10;
-    GravaArquivoMem(530);
-  }
-
-  RestoreScreen(4,3,121,60);
-*/
-}
-

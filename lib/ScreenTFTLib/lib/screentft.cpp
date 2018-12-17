@@ -1,6 +1,7 @@
 #include <circle/string.h>
 #include <circle/types.h>
 #include <circle/interrupt.h>
+#include <circle/input/keyboardbuffer.h>
 #include <ScreenTFT/screentft.h>
 #include <circle/devicenameservice.h>
 #include <circle/sysconfig.h>
@@ -59,9 +60,10 @@ boolean CScrTft::Initialize (void)
     vymax = ((vygmax + 1) / 10) - 1;
     vlin = 0;
     vcol = 0;
-    vcorf = White;
+    vcorf = Green;
     vcorb = Black;
     vpagescr = 1;
+    pKeyboardType = 0;
 
     CDeviceNameService::Get ()->AddDevice ("ScrLdg", this, FALSE);
 
@@ -72,12 +74,6 @@ boolean CScrTft::Initialize (void)
 unsigned CScrTft::GetOutput (void) const
 {
     return voutput;
-}
-
-//-----------------------------------------------------------------------------
-void CScrTft::SetTypeKeyboard(unsigned pTypeKey)
-{
-    pKeyboardType = pTypeKey;
 }
 
 //-----------------------------------------------------------------------------
@@ -506,14 +502,26 @@ void CScrTft::locatexy(unsigned int xx, unsigned int yy) {
 }
 
 //-----------------------------------------------------------------------------
+unsigned int CScrTft::GetPosX(void) const
+{
+    return pposx;
+}
+
+//-----------------------------------------------------------------------------
+unsigned int CScrTft::GetPosY(void) const
+{
+    return pposy;
+}
+
+//-----------------------------------------------------------------------------
 void CScrTft::SaveScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
     if (vpagescr <= 8)
-        p_mLcdVdg->TFT_SaveScreen(vpagescr++, yi, xi, pwidth, pheight);
+        p_mLcdVdg->TFT_SaveScreen(vpagescr++, xi, yi, pwidth, pheight);
 }
 
 //-----------------------------------------------------------------------------
 void CScrTft::RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight) {
-    p_mLcdVdg->TFT_RestoreScreen(--vpagescr, yi, xi, pwidth, pheight);
+    p_mLcdVdg->TFT_RestoreScreen(--vpagescr, xi, yi, pwidth, pheight);
 
     if (vpagescr < 1)
         vpagescr = 1;
@@ -540,7 +548,8 @@ void CScrTft::DrawLine(unsigned int x1, unsigned int y1, unsigned int x2, unsign
 }
 
 //-----------------------------------------------------------------------------
-void CScrTft::DrawRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int color) {
+void CScrTft::DrawRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int color) 
+{
     unsigned int xf, yf;
 
     xf = (xi + pwidth);
@@ -550,18 +559,10 @@ void CScrTft::DrawRect(unsigned int xi, unsigned int yi, unsigned int pwidth, un
 }
 
 //-----------------------------------------------------------------------------
-void CScrTft::DrawRoundRect(void) {
-    unsigned int xi, yi, pwidth, pheight, color;
-    unsigned char radius;
+void CScrTft::DrawRoundRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned char radius, unsigned int color) 
+{
     int tSwitch;
     unsigned int x1 = 0, y1, xt, yt, wt;
-
-    xi = vparam[0];
-    yi = vparam[1];
-    pwidth = vparam[2];
-    pheight = vparam[3];
-    radius = vparam[4];
-    color = vparam[5];
 
     y1 = radius;
 
@@ -671,425 +672,7 @@ void CScrTft::VerifyTouchLcd(unsigned char vtipo, unsigned int *ppostx, unsigned
     }
 }
 
-//------------------------------------------------------------------------
-void CScrTft::showWindow(unsigned char* vparamstrscr, unsigned int *vparamscr)
-{
-    unsigned int i, ii, xib, yib, x1, y1, pwidth, pheight;
-    unsigned char *bstr, bbutton;
-
-    bstr = vparamstrscr;
-    x1 = vparamscr[0];
-    y1 = vparamscr[1];
-    pwidth = vparamscr[2];
-    pheight = vparamscr[3];
-    bbutton = vparamscr[4];
-
-    // Desenha a Janela
-    FillRect(x1, y1, pwidth, pheight, vcorwb);
-    DrawRect(x1, y1, pwidth, pheight, vcorwf);
-
-    if (*bstr) {
-        DrawRect(x1, y1, pwidth, 12, vcorwf);
-        writesxy(x1 + 2, y1 + 3,8,(char*)bstr,vcorwf,vcorwb);
-    }
-
-    i = 1;
-    for (ii = 0; ii <= 7; ii++)
-        vbuttonwin[ii] = 0;
-
-    // Desenha Botoes
-    vbbutton = bbutton;
-    while (vbbutton)
-    {
-        xib = x1 + 2 + (44 * (i - 1));
-        yib = (y1 + pheight) - 12;
-        vbuttonwiny = yib;
-        i++;
-
-        drawButtons(xib, yib);
-    }
-}
-
 //-------------------------------------------------------------------------
-void CScrTft::drawButtons(unsigned int xib, unsigned int yib) {
-
-    // Desenha Bot?
-    vparam[0] = xib;
-    vparam[1] = yib;
-    vparam[2] = 42;
-    vparam[3] = 10;
-    vparam[4] = 1;
-    vparam[5] = Black;
-    FillRect(xib, yib, 42, 10, White);
-    DrawRoundRect();  // rounded rectangle around text area
-
-    // Escreve Texto do Bot?
-    if (vbbutton & BTOK)
-    {
-        writesxy(xib + 16 - 6, yib + 2,8,(char*)"OK",Black,White);
-        vbbutton = vbbutton & 0xFE;    // 0b11111110
-        vbuttonwin[1] = xib;
-    }
-    else if (vbbutton & BTSTART)
-    {
-        writesxy(xib + 16 - 15, yib + 2,8,(char*)"START",Black,White);
-        vbbutton = vbbutton & 0xDF;    // 0b11011111
-        vbuttonwin[6] = xib;
-    }
-    else if (vbbutton & BTCLOSE)
-    {
-        writesxy(xib + 16 - 15, yib + 2,8,(char*)"CLOSE",Black,White);
-        vbbutton = vbbutton & 0xBF;    // 0b10111111
-        vbuttonwin[7] = xib;
-    }
-    else if (vbbutton & BTCANCEL)
-    {
-        writesxy(xib + 16 - 12, yib + 2,8,(char*)"CANC",Black,White);
-        vbbutton = vbbutton & 0xFD;    // 0b11111101
-        vbuttonwin[2] = xib;
-    }
-    else if (vbbutton & BTYES)
-    {
-        writesxy(xib + 16 - 9, yib + 2,8,(char*)"YES",Black,White);
-        vbbutton = vbbutton & 0xFB;    // 0b11111011
-        vbuttonwin[3] = xib;
-    }
-    else if (vbbutton & BTNO)
-    {
-        writesxy(xib + 16 - 6, yib + 2,8,(char*)"NO",Black,White);
-        vbbutton = vbbutton & 0xF7;    // 0b11110111
-        vbuttonwin[4] = xib;
-    }
-    else if (vbbutton & BTHELP)
-    {
-        writesxy(xib + 16 - 12, yib + 2,8,(char*)"HELP",Black,White);
-        vbbutton = vbbutton & 0xEF;    // 0b11101111
-        vbuttonwin[5] = xib;
-    }
-}
-
-//-------------------------------------------------------------------------
-unsigned char CScrTft::waitButton(void) {
-  unsigned char i, ii, iii;
-
-  ii = 0;
-  VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
-
-  for (i = 1; i <= 7; i++) {
-    if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbuttonwiny && vposty <= (vbuttonwiny + 10)) {
-      ii = 1;
-
-      for (iii = 1; iii <= (i - 1); iii++)
-        ii *= 2;
-
-      break;
-    }
-  }
-
-  return ii;
-}
-
-//-------------------------------------------------------------------------
-unsigned char CScrTft::message(char* bstr, unsigned char bbutton, unsigned int btime)
-{
-    unsigned int i, ii = 0, iii, xi, yi, xm, yf, ym, pwidth, pheight, xib, yib;
-    unsigned char qtdnl, maxlenstr;
-    unsigned char qtdcstr[8], poscstr[8], cc, dd, vbty = 0;
-    unsigned char *bstrptr;
-
-    qtdnl = 1;
-    maxlenstr = 0;
-    qtdcstr[1] = 0;
-    poscstr[1] = 0;
-    i = 0;
-
-    for (ii = 0; ii <= 7; ii++)
-        vbuttonwin[ii] = 0;
-
-    bstrptr = (unsigned char*)bstr;
-    while (*bstrptr)
-    {
-        qtdcstr[qtdnl]++;
-
-        if (qtdcstr[qtdnl] > 26)
-            qtdcstr[qtdnl] = 26;
-
-        if (qtdcstr[qtdnl] > maxlenstr)
-            maxlenstr = qtdcstr[qtdnl];
-
-        if (*bstrptr == '\n')
-        {
-            qtdcstr[qtdnl]--;
-            qtdnl++;
-
-            if (qtdnl > 6)
-                qtdnl = 6;
-
-            qtdcstr[qtdnl] = 0;
-            poscstr[qtdnl] = i + 1;
-        }
-
-        bstrptr++;
-        i++;
-    }
-
-    if (maxlenstr > 26)
-        maxlenstr = 26;
-
-    if (qtdnl > 6)
-        qtdnl = 6;
-
-    pwidth = maxlenstr * 8;
-    pwidth = pwidth + 2;
-    xm = pwidth / 2;
-    xi = 160 - xm - 1;
-
-    pheight = 10 * qtdnl;
-    pheight = pheight + 20;
-    ym = pheight / 2;
-    yi = 120 - ym - 1;
-    yf = 120 + ym - 1;
-
-    // Desenha Linha Fora
-    SaveScreen(xi,yi,pwidth,pheight);
-
-    FillRect(xi,yi,pwidth,pheight,White);
-    vparam[0] = xi;
-    vparam[1] = yi;
-    vparam[2] = pwidth;
-    vparam[3] = pheight;
-    vparam[4] = 2;
-    vparam[5] = Black;
-    DrawRoundRect();  // rounded rectangle around text area
-
-    // Escreve Texto Dentro da Caixa de Mensagem
-    for (i = 1; i <= qtdnl; i++)
-    {
-        xib = xi + xm;
-        xib = xib - ((qtdcstr[i] * 8) / 2);
-        yib = yi + 2 + (10 * (i - 1));
-
-        locatexy(xib, yib);
-        bstrptr = (unsigned char*)bstr + poscstr[i];
-        for (ii = poscstr[i]; ii <= (poscstr[i] + qtdcstr[i] - 1) ; ii++)
-            writecxy(8, *bstrptr++, Black, White);
-    }
-
-    // Desenha Botoes
-    i = 1;
-    vbbutton = bbutton;
-    while (vbbutton)
-    {
-        xib = xi + 2 + (44 * (i - 1));
-        yib = yf - 12;
-        vbty = yib;
-        i++;
-
-        drawButtons(xib, yib);
-    }
-
-      ii = 0;
-
-      if (!btime) {
-        while (!ii) {
-          VerifyTouchLcd(WHAITTOUCH, &vpostx, &vposty);
-
-          for (i = 1; i <= 7; i++) {
-            if (vbuttonwin[i] != 0 && vpostx >= vbuttonwin[i] && vpostx <= (vbuttonwin[i] + 32) && vposty >= vbty && vposty <= (vbty + 10)) {
-              ii = 1;
-
-              for (iii = 1; iii <= (i - 1); iii++)
-                ii *= 2;
-
-              break;
-            }
-          }
-        }
-      }
-      else {
-        for (dd = 0; dd <= 10; dd++)
-          for (cc = 0; cc <= btime; cc++);
-      }
-
-      RestoreScreen(xi,yi,pwidth,pheight);
-
-    return ii;
-}
-
-
-//-------------------------------------------------------------------------
-void CScrTft::radioset(unsigned char* vopt, unsigned char *vvar, unsigned int x, unsigned int y, unsigned char vtipo) {
-  unsigned char cc, xc;
-  unsigned char cchar, vdisp = 0;
-
-  xc = 0;
-  cc = 0;
-  cchar = ' ';
-
-  while(vtipo == WINOPER && cchar != '\0') {
-    cchar = vopt[cc];
-    if (cchar == ',') {
-      if (cchar == ',' && cc != 0)
-        xc++;
-
-      if (vpostx >= x && vpostx <= x + 8 && vposty >= (y + (xc * 10)) && vposty <= ((y + (xc * 10)) + 8)) {
-        vvar[0] = xc;
-        vdisp = 1;
-      }
-    }
-
-    cc++;
-  }
-
-  xc = 0;
-  cc = 0;
-
-  while(vtipo == WINDISP || vdisp) {
-    cchar = vopt[cc];
-
-    if (cchar == ',') {
-      if (cchar == ',' && cc != 0)
-        xc++;
-
-      FillRect(x, y + (xc * 10), 8, 8, White);
-      DrawCircle(x + 4, y + (xc * 10) + 2, 4, 0, Black);
-
-      if (vvar[0] == xc)
-        DrawCircle(x + 4, y + (xc * 10) + 2, 3, 1, Black);
-      else
-        DrawCircle(x + 4, y + (xc * 10) + 2, 3, 0, Black);
-
-      locatexy(x + 10, y + (xc * 10));
-    }
-
-    if (cchar != ',' && cchar != '\0')
-      writecxy(8, cchar, Black, White);
-
-    if (cchar == '\0')
-      break;
-
-    cc++;
-  }
-}
-
-//-------------------------------------------------------------------------
-void CScrTft::togglebox(unsigned char* bstr, unsigned char *vvar, unsigned int x, unsigned int y, unsigned char vtipo) {
-  unsigned char cc = 0;
-  unsigned char cchar, vdisp = 0;
-
-  if (vtipo == WINOPER && vpostx >= x && vpostx <= x + 4 && vposty >= y && vposty <= y + 4) {
-    if (vvar[0])
-      vvar[0] = 0;
-    else
-      vvar[0] = 1;
-
-    vdisp = 1;
-  }
-
-  if (vtipo == WINDISP || vdisp) {
-    FillRect(x, y + 2, 4, 4, White);
-    DrawRect(x, y + 2, 4, 4, Black);
-
-    if (vvar[0]) {
-      DrawLine(x, y + 2, x + 4, y + 6, Black);
-      DrawLine(x, y + 6, x + 4, y + 2, Black);
-    }  
-
-    if (vtipo == WINDISP) {
-      x += 6;
-      locatexy(x,y);
-      while (bstr[cc] != 0) {
-        cchar = bstr[cc];
-        cc++;
-
-        writecxy(8, cchar, Black, White);
-        x += 6;
-      }
-    }
-  }
-}
-
-//-------------------------------------------------------------------------
-void CScrTft::fillin(unsigned char* vvar, unsigned int x, unsigned int y, unsigned int pwidth, unsigned char vtipo)
-{
-    unsigned int cc = 0;
-    unsigned char cchar, *vvarptr, vdisp = 0;
-
-    vvarptr = vvar;
-
-    while (*vvarptr) {
-        cc += 8;
-        vvarptr++;
-    }
-
-    if (vtipo == WINOPER) {
-        if (!vkeyopen && vpostx >= x && vpostx <= (x + pwidth) && vposty >= y && vposty <= (y + 10)) {
-            vkeyopen = 0x01;
-            funcKey(1,1, 0, 0,x,y+12);
-        }
-
-        if (vbytetec == 0xFF) {
-            if (vkeyopen && (vpostx < x || vpostx > (x + pwidth) || vposty < y || vposty > (y + 10))) {
-                vkeyopen = 0x00;
-                funcKey(1,2, 0, 0,x,y+12);
-            }
-        }
-        else {
-            if (vbytetec >= 0x20 && vbytetec <= 0x7F && (x + cc + 8) < (x + pwidth)) {
-                *vvarptr++ = vbytetec;
-                *vvarptr = 0x00;
-
-                locatexy(x+cc+2,y+2);
-                writecxy(8, vbytetec, Black, White);
-
-                vdisp = 1;
-            }
-            else {
-                switch (vbytetec) {
-                    case 0x0D:  // Enter ou Tecla END
-                        if (vkeyopen) {
-                            vkeyopen = 0x00;
-                            funcKey(1,2, 0, 0,x,y+12);
-                        }
-                        break;
-                    case 0x08:  // BackSpace
-                        if (pposx > (x + 10)) {
-                            *vvarptr = '\0';
-                            vvarptr--;
-                            if (vvarptr < vvar)
-                                vvarptr = vvar;
-                            *vvarptr = '\0';
-                            pposx = pposx - 8;
-                            locate(vcol,vlin, NOREPOS_CURSOR);
-                            writecxy(8, 0x08, Black, White);
-                            pposx = pposx - 8;
-                        }
-                        break;
-                }
-            }
-        }
-    }
-
-    if (vtipo == WINDISP || vdisp) {
-        if (!vdisp) {
-            DrawRect(x,y,pwidth,10,Black);
-            FillRect(x+1,y+1,pwidth-2,8,White);
-        }
-
-        vvarptr = vvar;
-        locatexy(x+2,y+2);
-        while (*vvarptr) {
-            cchar = *vvarptr++;
-            cc++;
-
-            writecxy(8, cchar, Black, White);
-
-            if (pposx >= x + pwidth)
-                break;
-        }
-    }
-}
-
 void CScrTft::showImageBMP(unsigned int posx, unsigned int posy, unsigned int pwidth, unsigned int pheight, unsigned char* pfileImage)
 {
     BITMAPINFOHEADER *bitmapInfoHeader;
@@ -1132,9 +715,48 @@ void CScrTft::showImageBMP(unsigned int posx, unsigned int posy, unsigned int pw
 }
 
 //-------------------------------------------------------------------------
-/*void combobox(unsigned char* vopt, unsigned char *vvar,unsigned char x, unsigned char y, unsigned char vtipo) {
-}*/
+void CScrTft::showImageICO(unsigned int posx, unsigned int posy, unsigned int pwidth, unsigned int pheight, unsigned char* pfileImage)
+{
+    BITMAPINFOHEADER *bitmapInfoHeader;
+    ICONDIR *icoIconDir;
+    ICONDIRENTRY *icoIconDirEntry;
+    unsigned char *icoImage;  //store image data
+    int ix, iy, imageIdx=0, imageIx, imageStart;  //image index counter
+    unsigned char tempRGB;  //our swap variable
+    unsigned int *vimageshow = (unsigned int*)malloc(8192);
+    unsigned char vptricondir[sizeof(ICONDIR)];
+    unsigned char vptricondirentry[sizeof(ICONDIRENTRY)];
+    unsigned char vptrinfo[sizeof(BITMAPINFOHEADER)];
+    unsigned char *vfileImage = (unsigned char*)(pfileImage + (sizeof(ICONDIR) + 1));
+    unsigned int plinha, pw = pwidth, ph = pheight, psizeico = 0, psizedif = 0;
 
-//-------------------------------------------------------------------------
-/*void editor(unsigned char* vtexto, unsigned char *vvar,unsigned char x, unsigned char y, unsigned char vtipo) {
-}*/
+    memcpy((unsigned char*)&vptricondir, (unsigned char*)pfileImage, sizeof(ICONDIR));
+    icoIconDir = (ICONDIR*)vptricondir;
+
+    memcpy((unsigned char*)&vptricondirentry, (unsigned char*)(pfileImage + sizeof(ICONDIR)), sizeof(ICONDIRENTRY));
+    icoIconDirEntry = (ICONDIRENTRY*)vptricondirentry;
+
+    memcpy((unsigned char*)&vptrinfo, (unsigned char*)(pfileImage + sizeof(ICONDIR) + sizeof(ICONDIRENTRY)), sizeof(BITMAPINFOHEADER));
+    bitmapInfoHeader = (BITMAPINFOHEADER*)vptrinfo;
+
+    imageStart = icoIconDirEntry->dwImageOffset + bitmapInfoHeader->biSize;
+
+    if (icoIconDir->idType == 0x01 && icoIconDir->idCount == 0x01 && icoIconDirEntry->bWidth == 0x20 && icoIconDirEntry->bHeight == 0x20)
+    {
+        //swap the r and b values to get RGB (bitmap is BGR)
+        plinha = pw * 3;
+        imageIx = 0;
+        psizeico = ((icoIconDirEntry->bWidth * icoIconDirEntry->bHeight) * (bitmapInfoHeader->biBitCount == 24? 3 : 2));
+        psizedif = icoIconDirEntry->dwBytesInRes - bitmapInfoHeader->biSize - psizeico;
+        for (iy = 1; iy <= ph; iy++) // fixed semicolon
+        {
+            imageIdx = psizeico - (plinha * iy);
+            for (ix = imageIdx; ix < (imageIdx + plinha); ix += 3)
+            {
+                vimageshow[imageIx++] = ((pfileImage[imageStart + ix + 2] >> 3) << 11)  | ((pfileImage[imageStart + ix + 1] >> 2) << 5) | (pfileImage[imageStart + ix] >> 3);
+            }
+        }
+
+        p_mLcdVdg->TFT_Show_Image(posy,posx,pw,ph,vimageshow);
+    }
+}

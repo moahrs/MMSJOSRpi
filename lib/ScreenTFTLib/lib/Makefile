@@ -18,7 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-OBJS	= spi_manual.o lcd_tch.o lcd_vdg.o screentft.o
+OBJS	= spi_manual.o lcd_tch.o lcd_vdg.o screentft.o gui.o
 
 all: libscreentft.a
 

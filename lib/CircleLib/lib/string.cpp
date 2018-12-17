@@ -72,6 +72,11 @@ const char *CString::operator = (const char *pString)
 	return m_pBuffer;
 }
 
+char *CString::GetString(void) const
+{
+	return m_pBuffer;
+}
+
 const CString &CString::operator = (const CString &rString)
 {
 	delete [] m_pBuffer;

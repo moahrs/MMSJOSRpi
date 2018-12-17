@@ -15,7 +15,6 @@ public:
 
 	unsigned GetOutput (void) const;
 	void SetOutput (unsigned pOutput);
-	void SetTypeKeyboard(unsigned pTypeKey);
 
 	unsigned GetWidth (void) const;
 	unsigned GetHeight (void) const;
@@ -48,13 +47,15 @@ public:
 	void getPos(unsigned int *pPostX, unsigned int *pPostY);
 
 	void locatexy(unsigned int pposx, unsigned int ppoxy);
+	unsigned int GetPosX(void) const;
+	unsigned int GetPosY(void) const;
 	void writesxy(unsigned int x, unsigned int y, unsigned char sizef, char *msgs, unsigned int pcolor, unsigned int pbcolor);
 	void writecxy(unsigned char sizef, unsigned char pbyte, unsigned int pcolor, unsigned int pbcolor);
 	void SetDot(unsigned int x, unsigned int y, unsigned int color);
 	void FillRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned int pcor);
 	void DrawLine(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2, unsigned int color);
 	void DrawRect(unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight, unsigned int color);
-	void DrawRoundRect(void);
+	void DrawRoundRect(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight, unsigned char radius, unsigned int color);
 	void DrawCircle(unsigned int xi, unsigned int yi, unsigned char pang, unsigned char pfil, unsigned int pcor);
 	void PutImage(unsigned int* vimage, unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight);
 	void InvertRect(unsigned int x, unsigned int y, unsigned int pwidth, unsigned int pheight);
@@ -63,14 +64,8 @@ public:
 	void RestoreScreen(unsigned int xi, unsigned int yi, unsigned int pwidth, unsigned int pheight);
 
 	void VerifyTouchLcd(unsigned char vtipo, unsigned int *ppostx, unsigned int *pposty);
-	void showWindow(unsigned char* vparamstrscr, unsigned int *vparamscr);
-	void drawButtons(unsigned int xib, unsigned int yib);
-	unsigned char waitButton(void);
-	unsigned char message(char* bstr, unsigned char bbutton, unsigned int btime);
-	void radioset(unsigned char* vopt, unsigned char *vvar, unsigned int x, unsigned int y, unsigned char vtipo);
-	void togglebox(unsigned char* bstr, unsigned char *vvar, unsigned int x, unsigned int y, unsigned char vtipo);
-	void fillin(unsigned char* vvar, unsigned int x, unsigned int y, unsigned int pwidth, unsigned char vtipo);
 	void showImageBMP(unsigned int posx, unsigned int posy, unsigned int pwidth, unsigned int pheight, unsigned char* pfileImage);
+	void showImageICO(unsigned int posx, unsigned int posy, unsigned int pwidth, unsigned int pheight, unsigned char* pfileImage);
 
 	static CScrTft *Get (void);
 
@@ -191,6 +186,35 @@ typedef struct tagBITMAPINFOHEADER
     u32 biClrUsed;  //number of colors used by th ebitmap
     u32 biClrImportant;  //number of colors that are important
 }BITMAPINFOHEADER;
+
+typedef struct tagICONDIRENTRY
+{
+	u8 bWidth;                // Width of the image
+	u8 bHeight;               // Height of the image (times 2)
+	u8 bColorCount;           // Number of colors in image (0 if >=8bpp)
+	u8 bReserved;             // Reserved
+	u16 wPlanes;              // Color Planes
+	u16 wBitCount;            // Bits per pixel
+	u32 dwBytesInRes;         // how many bytes in this resource?
+	u32 dwImageOffset;        // where in the file is this image
+} ICONDIRENTRY;
+
+typedef struct tagICONDIR
+{
+	u16      idReserved;   // Reserved
+	u16      idType;       // resource type (1 for icons)
+	u16      idCount;      // how many images?
+	//ICONDIRENTRY  idEntries[1]; // the entries for each image
+} ICONDIR;
+
+// 46 bytes
+typedef struct tagICONIMAGE
+{
+   BITMAPINFOHEADER   icHeader;      		// DIB header
+   u32		icColors[1];   		// Color table (short 4 bytes) //RGBQUAD
+   u8            icXOR[1];      // DIB bits for XOR mask
+   u8            icAND[1];      // DIB bits for AND mask
+} ICONIMAGE;
 
 #pragma pack(pop)
 

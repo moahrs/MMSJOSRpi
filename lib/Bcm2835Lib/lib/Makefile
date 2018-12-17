@@ -18,7 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-OBJS	= bcm2835min.o
+OBJS	= bcm2835min.o stdio.o stdlib.o ds1307.o
 
 all: libbcm2835min.a
 

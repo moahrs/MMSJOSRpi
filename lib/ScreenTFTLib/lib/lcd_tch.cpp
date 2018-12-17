@@ -144,10 +144,10 @@ void CLcdTch::TP_DrawPoint(unsigned int Xpos,unsigned int Ypos, unsigned int col
     (void) Ypos;
     (void) color;
 //    Write_Command_Data(0x03, 0x1030);
-    m_mLcdVdg->TFT_Dot(Xpos,Ypos,color);
-    m_mLcdVdg->TFT_Dot(Xpos+1,Ypos,color);
-    m_mLcdVdg->TFT_Dot(Xpos,Ypos+1,color);
-    m_mLcdVdg->TFT_Dot(Xpos+1,Ypos+1,color);
+//    m_mLcdVdg->TFT_Dot(Xpos,Ypos,color);
+//    m_mLcdVdg->TFT_Dot(Xpos+1,Ypos,color);
+//    m_mLcdVdg->TFT_Dot(Xpos,Ypos+1,color);
+//    m_mLcdVdg->TFT_Dot(Xpos+1,Ypos+1,color);
 }
 
 unsigned char CLcdTch::Read_Ads7843(Coordinate * screenPtr)
